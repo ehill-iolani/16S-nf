@@ -1,0 +1,180 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema",
+  "$id": "https://raw.githubusercontent.com/ehill-iolani/16S-nf/main/nextflow_schema.json",
+  "title": "16S-nf pipeline parameters",
+  "description": "ONT 16S rRNA amplicon microbial community classification: quality-aware clustering (isONclust) + spoa/racon/medaka consensus + reference/BLAST taxonomy assignment, plus Bray-Curtis/PCoA beta diversity.",
+  "type": "object",
+  "$defs": {
+    "input_output_options": {
+      "title": "Input/output options",
+      "type": "object",
+      "description": "Define where the pipeline should find input data and save output data.",
+      "required": ["input", "taxdb"],
+      "properties": {
+        "input": {
+          "type": "string",
+          "format": "file-path",
+          "exists": true,
+          "mimetype": "text/csv",
+          "pattern": "^\\S+\\.csv$",
+          "description": "Samplesheet CSV with two columns: sample,fastq.",
+          "help_text": "Each row maps a sample name to a fastq file or glob (e.g. `data/barcode17/*.fastq.gz`). A glob may match multiple part-files -- they're merged into one file per sample before filtering. Glob paths resolve relative to the launch directory, not the samplesheet's own location."
+        },
+        "taxdb": {
+          "type": "string",
+          "format": "file-path",
+          "exists": true,
+          "pattern": "^\\S+\\.(fa|fasta|fna)(\\.gz)?$",
+          "description": "16S reference sequences FASTA (e.g. a SILVA or NCBI 16S targeted-loci export).",
+          "help_text": "A BLAST db is (re)built from this file at the start of every run, so the reference set can be updated without a separate makeblastdb step."
+        },
+        "outdir": {
+          "type": "string",
+          "format": "directory-path",
+          "default": "results",
+          "description": "Output directory where results are published."
+        }
+      }
+    },
+    "primer_trimming": {
+      "title": "Primer trimming",
+      "type": "object",
+      "description": "cutadapt primer trimming -- skipped entirely if left unset.",
+      "properties": {
+        "fwd_primer": {
+          "type": "string",
+          "pattern": "^[ACGTUWSMKRYBDHVNacgtuwsmkrybdhvn]+$",
+          "description": "Forward primer sequence.",
+          "help_text": "IUPAC nucleotide codes only (ACGTU + ambiguity codes WSMKRYBDHVN). Case-insensitive. e.g. 27F (AGAGTTTGATCMTGGCTCAG) for full-length 16S."
+        },
+        "rev_primer": {
+          "type": "string",
+          "pattern": "^[ACGTUWSMKRYBDHVNacgtuwsmkrybdhvn]+$",
+          "description": "Reverse primer sequence.",
+          "help_text": "IUPAC nucleotide codes only (ACGTU + ambiguity codes WSMKRYBDHVN). Case-insensitive. e.g. 1492R (TACGGYTACCTTGTTACGACTT) for full-length 16S."
+        }
+      }
+    },
+    "read_filtering": {
+      "title": "Read filtering",
+      "type": "object",
+      "description": "chopper length/quality filtering thresholds.",
+      "properties": {
+        "min_len": {
+          "type": "integer",
+          "default": 1200,
+          "minimum": 1,
+          "description": "Minimum read length.",
+          "help_text": "Default sized for full-length 16S (~1.2-1.8kb via 27F/1492R). Narrow this for a single V-region amplicon instead."
+        },
+        "max_len": {
+          "type": "integer",
+          "default": 1800,
+          "minimum": 1,
+          "description": "Maximum read length.",
+          "help_text": "Must be greater than min_len."
+        },
+        "min_qual": {
+          "type": "integer",
+          "default": 10,
+          "minimum": 0,
+          "description": "Minimum average read quality (Phred score)."
+        }
+      }
+    },
+    "clustering": {
+      "title": "Clustering",
+      "type": "object",
+      "description": "isONclust de novo clustering.",
+      "properties": {
+        "cluster_id": {
+          "type": "number",
+          "default": 0.86,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "isONclust similarity threshold.",
+          "help_text": "Tune per amplicon/primer set -- too loose merges distinct organisms into one cluster, too strict splits one organism's reads (or its multiple rRNA operon copies) into several clusters."
+        },
+        "min_cluster": {
+          "type": "integer",
+          "default": 20,
+          "minimum": 1,
+          "description": "Minimum reads in a cluster required to attempt consensus."
+        }
+      }
+    },
+    "consensus_polishing": {
+      "title": "Consensus polishing",
+      "type": "object",
+      "description": "spoa/racon (and optionally medaka) consensus building.",
+      "properties": {
+        "enable_medaka": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use the medaka-polished consensus instead of the racon consensus downstream.",
+          "help_text": "Off by default: the racon consensus is used directly as the final consensus for BLAST and reporting. When enabled, MEDAKA runs as an additional ONT-specific polishing step and its output replaces the racon consensus everywhere downstream."
+        }
+      }
+    },
+    "taxonomy_assignment": {
+      "title": "Taxonomy assignment",
+      "type": "object",
+      "description": "BLAST-based taxonomy assignment and confidence flagging.",
+      "properties": {
+        "min_pident": {
+          "type": "number",
+          "default": 90,
+          "minimum": 0,
+          "maximum": 100,
+          "description": "BLAST %identity threshold for a confident call.",
+          "help_text": "Hits below this identity are flagged low_identity rather than dropped, and routed to consensus_by_confidence/low_confidence/ instead of confident/. Clusters with no BLAST hit at all are flagged no_hit. Also determines which clusters count as an identified taxon for the rarefaction curve and PCoA (flagged clusters are excluded from both)."
+        }
+      }
+    },
+    "beta_diversity": {
+      "title": "Beta diversity (PCoA)",
+      "type": "object",
+      "description": "Optional per-sample metadata for coloring the PCoA plot -- doesn't affect the pipeline's classification steps at all.",
+      "properties": {
+        "metadata": {
+          "type": "string",
+          "format": "file-path",
+          "exists": true,
+          "pattern": "^\\S+\\.csv$",
+          "description": "Optional CSV: sample,<any metadata columns> (e.g. sample,group,site).",
+          "help_text": "Joined onto the PCoA coordinates by sample. Left blank, the PCoA still runs (Bray-Curtis + classical PCoA across samples), just without anything to color the points by."
+        }
+      }
+    },
+    "generic_options": {
+      "title": "Generic options",
+      "type": "object",
+      "description": "Less common options, typically left at their defaults.",
+      "properties": {
+        "help": {
+          "type": "boolean",
+          "default": false,
+          "description": "Display the help message and exit.",
+          "hidden": true
+        },
+        "tracedir": {
+          "type": "string",
+          "format": "directory-path",
+          "default": "results/pipeline_info",
+          "description": "Directory for the Nextflow timeline/report/trace files.",
+          "hidden": true
+        }
+      }
+    }
+  },
+  "allOf": [
+    { "$ref": "#/$defs/input_output_options" },
+    { "$ref": "#/$defs/primer_trimming" },
+    { "$ref": "#/$defs/read_filtering" },
+    { "$ref": "#/$defs/clustering" },
+    { "$ref": "#/$defs/consensus_polishing" },
+    { "$ref": "#/$defs/taxonomy_assignment" },
+    { "$ref": "#/$defs/beta_diversity" },
+    { "$ref": "#/$defs/generic_options" }
+  ]
+}

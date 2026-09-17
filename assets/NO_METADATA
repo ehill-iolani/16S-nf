@@ -1,0 +1,1 @@
+placeholder -- staged as the metadata input when --metadata isn't set; pcoa.py checks the staged filename to detect this case and skips the metadata join

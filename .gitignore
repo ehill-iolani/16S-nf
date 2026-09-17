@@ -1,0 +1,21 @@
+# Nextflow
+work/
+.nextflow/
+.nextflow.log*
+results/
+
+# raw sequencing data and reference databases -- these are large,
+# run-specific, and not part of the pipeline itself; point --input /
+# --taxdb / --metadata at your own copies. A small synthetic dataset for
+# -profile test lives under tests/data/ instead, and is tracked normally.
+/data/
+assets/*.fasta
+assets/*.csv
+
+# personal/local
+scratch.sh
+notes.md
+
+# OS
+.DS_Store
+**/.DS_Store
