@@ -17,21 +17,24 @@
 
 nextflow.enable.dsl = 2
 
-include { SIXTEEN_S   } from './workflows/sixteen_s.nf'
-include { MERGE_FASTQ } from './modules/merge_fastq.nf'
+include { WF_16S             } from './workflows/16s.nf'
+include { MERGE_FASTQ        } from './modules/merge_fastq.nf'
+include { FETCH_TAXDB_SILVA  } from './modules/fetch_taxdb_silva.nf'
+include { FETCH_TAXDB_REFSEQ } from './modules/fetch_taxdb_refseq.nf'
 
 // ---- top-level params (override via -params-file or --flag) ----
 // filtering/clustering/taxonomy defaults live in nextflow.config, not here --
 // anything read directly inside an included module or workflow script
 // (rather than only inside this file's own `workflow` block) must be set
 // there to be reliably visible by the time that module/workflow script runs
-params.input        = null   // path to samplesheet.csv (sample,fastq); fastq globs resolve relative to the launch dir, not the CSV's location
-params.outdir       = "results"
-params.fwd_primer   = null
-params.rev_primer   = null
-params.taxdb        = null   // path to a 16S reference sequences FASTA (e.g. a SILVA/NCBI 16S export); a BLAST db is built from this at runtime
-params.metadata     = null   // optional CSV: sample,<arbitrary metadata columns> -- joined onto the PCoA output for coloring
-params.help         = false
+params.input         = null   // path to samplesheet.csv (sample,fastq); fastq globs resolve relative to the launch dir, not the CSV's location
+params.outdir        = "results"
+params.fwd_primer    = null
+params.rev_primer    = null
+params.tax_db_source = 'custom'   // 'custom' (use --taxdb as-is), 'silva138', or 'refseq16s' -- see helpMessage below
+params.taxdb         = null   // path to a 16S reference sequences FASTA; required only when --tax_db_source custom. A BLAST db is built from this at runtime
+params.metadata      = null   // optional CSV: sample,<arbitrary metadata columns> -- joined onto the PCoA output for coloring
+params.help          = false
 
 def helpMessage() {
     log.info """
@@ -42,7 +45,12 @@ def helpMessage() {
 
     Required:
       --input       CSV: sample,fastq_path
-      --taxdb       16S reference sequences FASTA (BLAST db is built from this each run)
+      --taxdb       16S reference sequences FASTA (required only when --tax_db_source custom)
+
+    Reference database (--tax_db_source, default '${params.tax_db_source}'):
+      custom      use --taxdb as supplied
+      silva138    auto-download SILVA 138.1 SSURef (Bacteria/Archaea only, cached under --tax_db_cache)
+      refseq16s   auto-download NCBI RefSeq 16S targeted loci, Bacteria+Archaea (cached under --tax_db_cache)
 
     Key optional:
       --fwd_primer / --rev_primer   primer sequences for cutadapt trimming (e.g. 27F/1492R for full-length 16S)
@@ -72,12 +80,27 @@ def samplesheetToChannel(path) {
 }
 
 workflow {
-    if (params.help || !params.input || !params.taxdb) {
+    if (!(params.tax_db_source in ['custom', 'silva138', 'refseq16s'])) {
+        log.error "Unknown --tax_db_source '${params.tax_db_source}' -- expected 'custom', 'silva138', or 'refseq16s'"
+        exit 1
+    }
+
+    if (params.help || !params.input || (params.tax_db_source == 'custom' && !params.taxdb)) {
         helpMessage()
         exit 0
     }
 
-    taxdb_fasta_ch = Channel.fromPath(params.taxdb, checkIfExists: true)
+    // --taxdb is only consulted for 'custom'; the two named sources fetch
+    // (and cache under --tax_db_cache) their own reference fasta instead
+    if (params.tax_db_source == 'silva138') {
+        FETCH_TAXDB_SILVA()
+        taxdb_fasta_ch = FETCH_TAXDB_SILVA.out.fasta
+    } else if (params.tax_db_source == 'refseq16s') {
+        FETCH_TAXDB_REFSEQ()
+        taxdb_fasta_ch = FETCH_TAXDB_REFSEQ.out.fasta
+    } else {
+        taxdb_fasta_ch = Channel.fromPath(params.taxdb, checkIfExists: true)
+    }
 
     // PCOA's metadata input is optional -- when unset, pass a placeholder
     // file instead of an empty channel so the process (which has a fixed
@@ -87,7 +110,7 @@ workflow {
         ? Channel.fromPath(params.metadata, checkIfExists: true)
         : Channel.fromPath("${projectDir}/assets/NO_METADATA")
 
-    SIXTEEN_S(samplesheetToChannel(params.input), taxdb_fasta_ch, metadata_ch)
+    WF_16S(samplesheetToChannel(params.input), taxdb_fasta_ch, metadata_ch)
 }
 
 // dev/debug entry point -- run a single step in isolation, e.g.:

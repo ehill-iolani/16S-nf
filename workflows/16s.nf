@@ -12,7 +12,7 @@ include { SORT_CONSENSUS   } from '../modules/sort_consensus.nf'
 include { BUILD_REPORT     } from '../modules/report.nf'
 include { PCOA             } from '../modules/pcoa.nf'
 
-workflow SIXTEEN_S {
+workflow WF_16S {
 
     take:
     reads_ch    // tuple(sample, fastq)

@@ -51,6 +51,28 @@ launch directory, not the samplesheet's location.
 from [SILVA](https://www.arb-silva.de/) or NCBI's 16S targeted-loci
 database); a BLAST db is built from it at the start of every run.
 
+Instead of supplying your own, `--tax_db_source` can auto-download a
+reference for you:
+
+```bash
+nextflow run main.nf \
+  --input samplesheet.csv \
+  --tax_db_source silva138 \
+  -profile docker
+```
+
+| `--tax_db_source` | Reference |
+|---|---|
+| `custom` (default) | Whatever FASTA `--taxdb` points to |
+| `silva138` | SILVA 138.1 SSURef, restricted to Bacteria/Archaea, converted from RNA to DNA |
+| `refseq16s` | NCBI RefSeq targeted-loci 16S export (Bacteria + Archaea) |
+
+`silva138`/`refseq16s` need network access from wherever the pipeline runs,
+and cache the downloaded fasta under `--tax_db_cache` (default
+`assets/tax_db_cache/`) so it's fetched once and reused on later runs. When
+`--tax_db_source` is anything other than `custom`, `--taxdb` is ignored (and
+not required).
+
 Optionally, `--metadata metadata.csv` (`sample,<any columns>`, e.g.
 `sample,group,site`) gets joined onto the PCoA output for coloring points by
 group/site/etc. in the frontend -- it has no effect on classification.
@@ -67,7 +89,9 @@ nextflow run main.nf -entry MERGE_ONLY --input samplesheet.csv -profile docker
 | Parameter | Default | Description |
 |---|---|---|
 | `--input` | *(required)* | Samplesheet CSV (`sample,fastq`) |
-| `--taxdb` | *(required)* | 16S reference sequences FASTA; a BLAST db is built from this each run |
+| `--tax_db_source` | `custom` | Reference database: `custom` (use `--taxdb`), `silva138`, or `refseq16s` (the latter two auto-download and cache) |
+| `--taxdb` | *(required if `--tax_db_source custom`)* | 16S reference sequences FASTA; a BLAST db is built from this each run |
+| `--tax_db_cache` | `assets/tax_db_cache` | Where auto-downloaded reference databases are cached between runs |
 | `--outdir` | `results` | Output directory |
 | `--fwd_primer` / `--rev_primer` | `null` | Primer sequences for cutadapt trimming; trimming is skipped if unset |
 | `--min_len` / `--max_len` / `--min_qual` | `1200` / `1800` / `10` | chopper length/quality filtering thresholds -- sized for full-length 16S; narrow for a single V-region amplicon |
@@ -84,7 +108,13 @@ there if you're adding a new one).
 
 ```mermaid
 flowchart TD
-    taxdb[/"--taxdb silva_16s.fasta"/] --> MAKEBLASTDB
+    tax_db_source{"--tax_db_source"}
+    tax_db_source -->|"custom (default)"| taxdb[/"--taxdb silva_16s.fasta"/]
+    tax_db_source -->|"silva138"| FETCH_TAXDB_SILVA
+    tax_db_source -->|"refseq16s"| FETCH_TAXDB_REFSEQ
+    taxdb --> MAKEBLASTDB
+    FETCH_TAXDB_SILVA --> MAKEBLASTDB
+    FETCH_TAXDB_REFSEQ --> MAKEBLASTDB
     MAKEBLASTDB --> blastdb[("BLAST db")]
 
     reads[/"--input samplesheet.csv"/] -->|"sample,fastq rows"| fastqs[/"fastq(.gz) files\n(per-sample, referenced by each row)"/]
@@ -111,7 +141,7 @@ flowchart TD
     SORT_CONSENSUS --> nohit[["no_hit/"]]
 ```
 
-1. `MAKEBLASTDB` -- build a BLAST db from `--taxdb` (once per run)
+1. `MAKEBLASTDB` -- build a BLAST db (once per run) from `--taxdb`, or from `FETCH_TAXDB_SILVA`/`FETCH_TAXDB_REFSEQ`'s output when `--tax_db_source` is `silva138`/`refseq16s`
 2. `MERGE_FASTQ` -- merge multi-part fastq(.gz) files per sample
 3. `CHOPPER` -- length/quality filter
 4. `CUTADAPT` -- primer trimming (skipped if no primers supplied)
@@ -164,7 +194,7 @@ doesn't compute beta diversity).
 
 ```
 main.nf                     entry point, samplesheet parsing, --help
-workflows/sixteen_s.nf      subworkflow chaining all steps
+workflows/16s.nf             subworkflow chaining all steps
 modules/*.nf                one process per tool, one container each
 bin/build_report.py         abundance table + QC html
 bin/pcoa.py                 Bray-Curtis + classical PCoA, optional metadata join
@@ -172,6 +202,7 @@ nextflow.config              param defaults, profiles, resource labels
 nextflow_schema.json         JSON Schema describing every --param (for UIs/validation tooling)
 conf/test.config             -profile test overrides (small synthetic dataset)
 assets/                      your own local samplesheet/taxdb/metadata go here (gitignored, except NO_METADATA)
+assets/tax_db_cache/         auto-downloaded SILVA/RefSeq reference fasta, cached across runs (gitignored)
 tests/data/                  small synthetic dataset used by -profile test
 .github/workflows/ci.yml     runs -profile test on push/PR
 ```

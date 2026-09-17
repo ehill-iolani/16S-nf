@@ -9,7 +9,7 @@
       "title": "Input/output options",
       "type": "object",
       "description": "Define where the pipeline should find input data and save output data.",
-      "required": ["input", "taxdb"],
+      "required": ["input"],
       "properties": {
         "input": {
           "type": "string",
@@ -20,19 +20,41 @@
           "description": "Samplesheet CSV with two columns: sample,fastq.",
           "help_text": "Each row maps a sample name to a fastq file or glob (e.g. `data/barcode17/*.fastq.gz`). A glob may match multiple part-files -- they're merged into one file per sample before filtering. Glob paths resolve relative to the launch directory, not the samplesheet's own location."
         },
-        "taxdb": {
-          "type": "string",
-          "format": "file-path",
-          "exists": true,
-          "pattern": "^\\S+\\.(fa|fasta|fna)(\\.gz)?$",
-          "description": "16S reference sequences FASTA (e.g. a SILVA or NCBI 16S targeted-loci export).",
-          "help_text": "A BLAST db is (re)built from this file at the start of every run, so the reference set can be updated without a separate makeblastdb step."
-        },
         "outdir": {
           "type": "string",
           "format": "directory-path",
           "default": "results",
           "description": "Output directory where results are published."
+        }
+      }
+    },
+    "taxonomy_database": {
+      "title": "Reference database",
+      "type": "object",
+      "description": "Which 16S reference sequences to build the run's BLAST db from.",
+      "properties": {
+        "tax_db_source": {
+          "type": "string",
+          "enum": ["custom", "silva138", "refseq16s"],
+          "default": "custom",
+          "description": "Reference database source: 'custom' (use --taxdb), 'silva138', or 'refseq16s'.",
+          "help_text": "'silva138' and 'refseq16s' auto-download and cache their reference fasta (under --tax_db_cache) instead of requiring --taxdb: 'silva138' is SILVA 138.1 SSURef restricted to Bacteria/Archaea with sequences converted from RNA to DNA; 'refseq16s' is NCBI's RefSeq targeted-loci 16S export (Bacteria+Archaea). Both need network access from wherever the pipeline runs. --taxdb is ignored unless this is 'custom'."
+        },
+        "taxdb": {
+          "type": "string",
+          "format": "file-path",
+          "exists": true,
+          "pattern": "^\\S+\\.(fa|fasta|fna)(\\.gz)?$",
+          "description": "16S reference sequences FASTA. Required when --tax_db_source custom, ignored otherwise.",
+          "help_text": "A BLAST db is (re)built from this file at the start of every run, so the reference set can be updated without a separate makeblastdb step."
+        },
+        "tax_db_cache": {
+          "type": "string",
+          "format": "directory-path",
+          "default": "assets/tax_db_cache",
+          "description": "Where auto-downloaded reference databases are cached between runs.",
+          "help_text": "Only relevant for --tax_db_source silva138/refseq16s; each is downloaded once and reused from here on subsequent runs. Irrelevant for --tax_db_source custom.",
+          "hidden": true
         }
       }
     },
@@ -169,6 +191,7 @@
   },
   "allOf": [
     { "$ref": "#/$defs/input_output_options" },
+    { "$ref": "#/$defs/taxonomy_database" },
     { "$ref": "#/$defs/primer_trimming" },
     { "$ref": "#/$defs/read_filtering" },
     { "$ref": "#/$defs/clustering" },
