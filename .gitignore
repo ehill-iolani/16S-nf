@@ -11,10 +11,12 @@ results/
 /data/
 assets/*.fasta
 assets/*.csv
+assets/tax_db_cache/
 
 # personal/local
 scratch.sh
 notes.md
+notes.sh
 
 # OS
 .DS_Store
