@@ -59,9 +59,17 @@ def main():
     hits_df = load_hits(args.hits)
     consensus_meta = load_consensus_meta(args.consensus)
 
-    # keep best hit per cluster (highest bitscore) as the working call
+    # keep best hit per cluster (highest bitscore) as the working call.
+    # Ties are common (several reference records with identical bitscores),
+    # so the sort must be stable: BLAST lists a cluster's hits best-first, and
+    # a stable sort keeps that order among tied bitscores, so the hit picked
+    # here is the first line of the cluster's hits file -- the same one
+    # SORT_CONSENSUS reads to choose the confidence folder. pandas' default
+    # sort is not stable and picked an arbitrary tied hit, which could disagree
+    # with SORT_CONSENSUS (a cluster flagged low_identity but filed under
+    # confident/) and gave clusters with identical hits different species.
     best = (
-        hits_df.sort_values("bitscore", ascending=False)
+        hits_df.sort_values("bitscore", ascending=False, kind="stable")
         .groupby("seq_id", as_index=False)
         .first()
     )
