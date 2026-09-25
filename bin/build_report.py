@@ -26,6 +26,30 @@ def load_hits(paths):
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=COLS)
 
 
+def species_label(stitle):
+    # same rule as the frontend's shortTaxonLabel: BLAST's stitle starts with
+    # the binomial, so the first two tokens name the species
+    toks = stitle.split() if isinstance(stitle, str) else []
+    return " ".join(toks[:2])
+
+
+def tied_species(hits_df):
+    """seq_id -> "|"-joined distinct species among the hits tied for that
+    cluster's best bitscore, or "" when the best hit is unambiguous.
+
+    A cluster's hits are often several reference records with identical
+    bitscores; when they name different species the working call (the first
+    of them) is really a coin flip, and the frontend reports it at genus
+    level (same genus) or as ambiguous (different genera) instead."""
+    out = {}
+    hits = hits_df[hits_df["subject_id"] != "NO_HIT"]
+    for seq_id, grp in hits.groupby("seq_id", sort=False):
+        top = grp[grp["bitscore"] == grp["bitscore"].max()]
+        names = list(dict.fromkeys(n for n in map(species_label, top["stitle"]) if n))
+        out[seq_id] = "|".join(names) if len(names) > 1 else ""
+    return out
+
+
 def load_consensus_meta(paths):
     # consensus fasta headers are stamped by RACON/MEDAKA as:
     #   >{sample}_{cluster_id} sample={sample} cluster_size={n_reads}
@@ -74,6 +98,7 @@ def main():
         .first()
     )
     best = best.merge(consensus_meta, on="seq_id", how="left")
+    best["tied_taxa"] = best["seq_id"].map(tied_species(hits_df)).fillna("")
 
     # clusters are flagged, not dropped, either for no BLAST hit at all or for
     # a best hit too divergent to call with confidence (pident < min-pident)
@@ -83,7 +108,7 @@ def main():
     best.loc[low_pident & (best["flag_reason"] == ""), "flag_reason"] = "low_identity"
 
     best = best[["seq_id", "sample", "cluster_size", "subject_id", "pident",
-                 "length", "evalue", "bitscore", "stitle", "flag_reason"]]
+                 "length", "evalue", "bitscore", "stitle", "tied_taxa", "flag_reason"]]
     best.to_csv(args.out_table, sep="\t", index=False)
 
     n_clusters = best.shape[0]

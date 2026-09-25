@@ -177,7 +177,7 @@ results/
     low_confidence/            best BLAST hit < --min_pident
     no_hit/                    no BLAST hit at all
   final_report/
-    abundance_table.tsv        one row per cluster: sample, cluster_size, best hit, flag_reason
+    abundance_table.tsv        one row per cluster: sample, cluster_size, best hit, tied_taxa (species tied for the best bitscore, if more than one), flag_reason
     run_qc_summary.html        cluster counts, per-sample flagged counts
     pcoa_coordinates.tsv       one row per sample: PC1-PC3 (+ % variance explained), plus any --metadata columns
   pipeline_info/                Nextflow timeline/report/trace
@@ -185,7 +185,7 @@ results/
 
 `abundance_table.tsv` is byte-for-byte the same schema edna-ont-nf produces
 (`seq_id, sample, cluster_size, subject_id, pident, length, evalue,
-bitscore, stitle, flag_reason`) -- this is what lets the platform's existing
+bitscore, stitle, tied_taxa, flag_reason`) -- this is what lets the platform's existing
 abundance and rarefaction charts work against 16S-nf's output with no
 frontend changes. `pcoa_coordinates.tsv` is new to this pipeline (edna-ont-nf
 doesn't compute beta diversity).

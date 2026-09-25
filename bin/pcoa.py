@@ -27,6 +27,19 @@ def short_taxon_label(stitle, subject_id):
     return subject_id if pd.notna(subject_id) else "Unclassified"
 
 
+def resolved_taxon(row):
+    """The taxon a confidently-hit cluster counts as. Hits tied for the best
+    bitscore that name several species (build_report.py's tied_taxa, "|"-joined)
+    are called at genus level when they share a genus ("Genus sp.") and
+    dropped (None) when they don't; the frontend applies the same rule."""
+    tied = row.get("tied_taxa")
+    names = tied.split("|") if isinstance(tied, str) and tied else []
+    if len(names) > 1:
+        genera = {name.split()[0] for name in names}
+        return f"{genera.pop()} sp." if len(genera) == 1 else None
+    return short_taxon_label(row.get("stitle"), row.get("subject_id"))
+
+
 def bray_curtis(matrix):
     """matrix: samples x taxa abundance array. Returns an n x n distance matrix.
     Sample counts here are classroom-scale (tens, not thousands), so the
@@ -96,9 +109,10 @@ def main():
     # the same exclusion the frontend's rarefaction chart applies, so the two
     # analyses of the same run stay consistent with each other.
     resolved = df[df["flag_reason"].fillna("") == ""].copy()
-    resolved["taxon"] = resolved.apply(
-        lambda r: short_taxon_label(r.get("stitle"), r.get("subject_id")), axis=1
-    )
+    resolved["taxon"] = resolved.apply(resolved_taxon, axis=1)
+    # clusters tied between species of different genera are "ambiguous" in the
+    # frontend, so they don't count here either
+    resolved = resolved[resolved["taxon"].notna()]
 
     matrix_df = (
         resolved.groupby(["sample", "taxon"])["cluster_size"]
