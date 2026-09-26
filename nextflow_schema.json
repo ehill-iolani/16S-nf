@@ -101,6 +101,12 @@
           "default": 10,
           "minimum": 0,
           "description": "Minimum average read quality (Phred score)."
+        },
+        "enable_read_stats": {
+          "type": "boolean",
+          "default": true,
+          "description": "Summarize read length and Q-score before vs. after filtering.",
+          "help_text": "Writes read_qc_summary.html, read_stats.tsv and read_length_qscore_hist.tsv to final_report/. Purely informational -- nothing downstream depends on it."
         }
       }
     },

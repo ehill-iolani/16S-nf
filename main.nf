@@ -55,6 +55,7 @@ def helpMessage() {
     Key optional:
       --fwd_primer / --rev_primer   primer sequences for cutadapt trimming (e.g. 27F/1492R for full-length 16S)
       --min_len / --max_len / --min_qual   chopper filtering thresholds (defaults tuned for full-length ~1.5kb 16S)
+      --enable_read_stats   read length/Q-score summary before vs. after filtering (default ${params.enable_read_stats})
       --cluster_id   isONclust similarity threshold (default ${params.cluster_id})
       --min_cluster  minimum reads to polish a cluster (default ${params.min_cluster})
       --enable_medaka   use medaka-polished consensus instead of racon consensus (default ${params.enable_medaka})

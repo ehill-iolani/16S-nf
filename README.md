@@ -95,6 +95,7 @@ nextflow run main.nf -entry MERGE_ONLY --input samplesheet.csv -profile docker
 | `--outdir` | `results` | Output directory |
 | `--fwd_primer` / `--rev_primer` | `null` | Primer sequences for cutadapt trimming; trimming is skipped if unset |
 | `--min_len` / `--max_len` / `--min_qual` | `1200` / `1800` / `10` | chopper length/quality filtering thresholds -- sized for full-length 16S; narrow for a single V-region amplicon |
+| `--enable_read_stats` | `true` | Read length and Q-score summary before vs. after filtering (`final_report/read_qc_summary.html`, `read_stats.tsv`, `read_length_qscore_hist.tsv`); purely informational |
 | `--cluster_id` | `0.86` | isONclust similarity threshold -- tune per amplicon/primer set |
 | `--min_cluster` | `20` | Minimum reads in a cluster to attempt consensus |
 | `--enable_medaka` | `false` | Use medaka-polished consensus instead of the racon consensus downstream |
@@ -119,6 +120,9 @@ flowchart TD
 
     reads[/"--input samplesheet.csv"/] -->|"sample,fastq rows"| fastqs[/"fastq(.gz) files\n(per-sample, referenced by each row)"/]
     fastqs --> MERGE_FASTQ --> CHOPPER --> CUTADAPT --> ISONCLUST
+    MERGE_FASTQ --> READ_STATS
+    CHOPPER --> READ_STATS
+    READ_STATS --> READ_STATS_REPORT
     ISONCLUST -->|"per cluster"| SPOA_CONSENSUS --> MINIMAP2_ALIGN --> RACON
 
     RACON --> medaka_check{"--enable_medaka?"}
@@ -144,6 +148,7 @@ flowchart TD
 1. `MAKEBLASTDB` -- build a BLAST db (once per run) from `--taxdb`, or from `FETCH_TAXDB_SILVA`/`FETCH_TAXDB_REFSEQ`'s output when `--tax_db_source` is `silva138`/`refseq16s`
 2. `MERGE_FASTQ` -- merge multi-part fastq(.gz) files per sample
 3. `CHOPPER` -- length/quality filter
+   - `READ_STATS` (side branch, `--enable_read_stats`, on by default) -- read length and mean Q-score before vs. after filtering
 4. `CUTADAPT` -- primer trimming (skipped if no primers supplied)
 5. `ISONCLUST` -- quality-aware de novo clustering
 6. `SPOA_CONSENSUS` -- draft consensus per cluster
@@ -179,6 +184,9 @@ results/
   final_report/
     abundance_table.tsv        one row per cluster: sample, cluster_size, best hit, tied_taxa (species tied for the best bitscore, if more than one), flag_reason
     run_qc_summary.html        cluster counts, per-sample flagged counts
+    read_qc_summary.html       read length / Q-score, before vs. after filtering (--enable_read_stats)
+    read_stats.tsv             the same numbers per sample and stage
+    read_length_qscore_hist.tsv  length and Q-score histograms behind the platform's Read QC charts
     pcoa_coordinates.tsv       one row per sample: PC1-PC3 (+ % variance explained), plus any --metadata columns
   pipeline_info/                Nextflow timeline/report/trace
 ```
@@ -198,6 +206,7 @@ workflows/16s.nf             subworkflow chaining all steps
 modules/*.nf                one process per tool, one container each
 bin/build_report.py         abundance table + QC html
 bin/pcoa.py                 Bray-Curtis + classical PCoA, optional metadata join
+bin/read_stats.py           read length/Q-score summary (stdlib only; also runs stand-alone)
 nextflow.config              param defaults, profiles, resource labels
 nextflow_schema.json         JSON Schema describing every --param (for UIs/validation tooling)
 conf/test.config             -profile test overrides (small synthetic dataset)
