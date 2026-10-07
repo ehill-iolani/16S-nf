@@ -1,7 +1,7 @@
 process SORT_CONSENSUS {
     tag "${sample}:${cluster_id}"
     label 'process_low'
-    container 'quay.io/biocontainers/pandas:2.2.1'
+    container "${params.container_registry}/biocontainers/pandas:2.2.1"
     publishDir "${params.outdir}/consensus_by_confidence", mode: 'copy'
 
     input:

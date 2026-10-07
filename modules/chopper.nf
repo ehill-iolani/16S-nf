@@ -1,7 +1,7 @@
 process CHOPPER {
     tag "$sample"
     label 'process_low'
-    container 'quay.io/biocontainers/chopper:0.7.0--hdcf5f25_0'
+    container "${params.container_registry}/biocontainers/chopper:0.7.0--hdcf5f25_0"
     publishDir(path: { "${params.outdir}/${sample}/01_filtered" }, mode: 'copy')
 
     input:

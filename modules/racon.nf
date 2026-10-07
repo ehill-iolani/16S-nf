@@ -1,7 +1,7 @@
 process RACON {
     tag "${sample}:${cluster_id}"
     label 'process_medium'
-    container 'quay.io/biocontainers/racon:1.5.0--h21ec9f0_2'
+    container "${params.container_registry}/biocontainers/racon:1.5.0--h21ec9f0_2"
     publishDir(path: { "${params.outdir}/${sample}/05_racon/${cluster_id}" }, mode: 'copy')
 
     input:

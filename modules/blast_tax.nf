@@ -1,7 +1,7 @@
 process BLAST_TAX {
     tag "${sample}:${cluster_id}"
     label 'process_low'
-    container 'quay.io/biocontainers/blast:2.15.0--pl5321h6f7f691_1'
+    container "${params.container_registry}/biocontainers/blast:2.15.0--pl5321h6f7f691_1"
     publishDir(path: { "${params.outdir}/${sample}/07_taxonomy/${cluster_id}" }, mode: 'copy')
 
     input:

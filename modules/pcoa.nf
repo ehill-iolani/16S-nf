@@ -4,7 +4,7 @@ process PCOA {
     // Batch setup, and pandas' own dependency on numpy is all pcoa.py needs
     // (classical PCoA is implemented directly with numpy, not scipy/
     // scikit-bio, to avoid pulling in a second, unverified container).
-    container 'quay.io/biocontainers/pandas:2.2.1'
+    container "${params.container_registry}/biocontainers/pandas:2.2.1"
     publishDir "${params.outdir}/final_report", mode: 'copy'
 
     input:

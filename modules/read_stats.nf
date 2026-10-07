@@ -5,7 +5,7 @@
 process READ_STATS {
     tag "$sample"
     label 'process_low'
-    container 'quay.io/biocontainers/pandas:2.2.1'
+    container "${params.container_registry}/biocontainers/pandas:2.2.1"
 
     input:
     tuple val(sample), path(raw), path(filtered)
@@ -27,7 +27,7 @@ process READ_STATS {
 
 process READ_STATS_REPORT {
     label 'process_low'
-    container 'quay.io/biocontainers/pandas:2.2.1'
+    container "${params.container_registry}/biocontainers/pandas:2.2.1"
     publishDir "${params.outdir}/final_report", mode: 'copy'
 
     input:

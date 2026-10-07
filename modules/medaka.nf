@@ -4,7 +4,7 @@ process MEDAKA {
     // ONT's own multi-arch image, not biocontainers: the biocontainers medaka
     // build is amd64-only and its TensorFlow backend SIGILLs under Docker's
     // amd64 emulation on Apple Silicon; this one has a native arm64 build too
-    container 'ontresearch/medaka:v1.11.3'
+    container "${params.dockerhub_registry}/ontresearch/medaka:v1.11.3"
     publishDir(path: { "${params.outdir}/${sample}/06_consensus" }, mode: 'copy')
 
     input:

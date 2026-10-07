@@ -100,6 +100,7 @@ nextflow run main.nf -entry MERGE_ONLY --input samplesheet.csv -profile docker
 | `--min_cluster` | `5` | Minimum reads in a read-level cluster to attempt consensus -- a compute/quality floor, kept low so fragments can still be merged |
 | `--merge_id` | `0.97` | Identity at which per-cluster consensus sequences are merged (second vsearch pass, `MERGE_CONSENSUS`); `0` skips the merge |
 | `--enable_medaka` | `false` | Use medaka-polished consensus instead of the racon consensus downstream |
+| `--container_registry` / `--dockerhub_registry` | `quay.io` / `docker.io` | Registries the tool images are pulled from. The `google_batch` profile points both at the project's Artifact Registry mirror (see [Container mirror](#container-mirror)); pass the defaults to pull from upstream |
 | `--min_pident` | `90` | BLAST hits below this %identity are flagged `low_identity`, not dropped; also the cutoff for what counts as an identified taxon in the rarefaction curve and PCoA |
 | `--min_abundance` | `20` | Merged clusters with fewer reads than this get `low_abundance = true` in the abundance table, not dropped (`0` = off) |
 | `--min_rel_abundance` | `0` | Merged clusters holding a smaller fraction of their sample's clustered reads than this get `low_abundance = true`, e.g. `0.001` = under 0.1% (`0` = off) |
@@ -216,6 +217,7 @@ modules/*.nf                one process per tool, one container each
 bin/build_report.py         abundance table + QC html
 bin/pcoa.py                 Bray-Curtis + classical PCoA, optional metadata join
 bin/read_stats.py           read length/Q-score summary (stdlib only; also runs stand-alone)
+scripts/mirror_images.sh    copies the pipeline's container images into our Artifact Registry (see Container mirror)
 nextflow.config              param defaults, profiles, resource labels
 nextflow_schema.json         JSON Schema describing every --param (for UIs/validation tooling)
 conf/test.config             -profile test overrides (small synthetic dataset)
@@ -224,6 +226,30 @@ assets/tax_db_cache/         auto-downloaded SILVA/RefSeq reference fasta, cache
 tests/data/                  small synthetic dataset used by -profile test
 .github/workflows/ci.yml     runs -profile test on push/PR
 ```
+
+## Container mirror
+
+On Google Batch every task starts on a fresh VM and pulls its image, so one
+timed-out pull from quay.io or Docker Hub can end a long run. The
+`google_batch` profile therefore pulls from our own Artifact Registry repo
+(`us-central1-docker.pkg.dev/iscc-400300/containers`), which keeps each
+image's upstream path (`biocontainers/blast:...`, `ontresearch/medaka:...`,
+`library/ubuntu:...`) so only the registry host differs. The repo is shared
+with edna-ont-nf; images both pipelines use (same tags) are already there.
+
+`scripts/mirror_images.sh` fills it. It reads the image list from the
+pipeline's own `container` directives, so it can't drift:
+
+```bash
+gcloud auth configure-docker us-central1-docker.pkg.dev   # once, for pushing
+scripts/mirror_images.sh --check     # read-only: is every image there, same digest as upstream?
+scripts/mirror_images.sh             # copy whatever is missing
+```
+
+Run it again whenever an image tag is added or changed, and before releasing
+(`--check` exits 1 if anything is missing). Every `container` must go through
+`${params.container_registry}` or `${params.dockerhub_registry}`; the script
+refuses to run if one doesn't, since it would silently bypass the mirror.
 
 ## Testing
 

@@ -1,7 +1,7 @@
 process MINIMAP2_ALIGN {
     tag "${sample}:${cluster_id}"
     label 'process_medium'
-    container 'quay.io/biocontainers/minimap2:2.28--he4a0461_3'
+    container "${params.container_registry}/biocontainers/minimap2:2.28--he4a0461_3"
     publishDir(path: { "${params.outdir}/${sample}/05_racon/${cluster_id}" }, mode: 'copy')
 
     input:

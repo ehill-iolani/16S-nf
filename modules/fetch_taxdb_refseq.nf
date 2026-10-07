@@ -3,7 +3,7 @@ process FETCH_TAXDB_REFSEQ {
     // needs /bin/bash to exist (the Nextflow docker executor execs it
     // directly, regardless of the `shell` directive) -- ubuntu has it plus
     // gunzip/awk already installed, only curl needs adding
-    container 'ubuntu:22.04'
+    container "${params.dockerhub_registry}/library/ubuntu:22.04"
     storeDir params.tax_db_cache
 
     output:

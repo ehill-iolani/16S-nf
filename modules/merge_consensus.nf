@@ -1,7 +1,7 @@
 process MERGE_CONSENSUS {
     tag "$sample"
     label 'process_low'
-    container 'quay.io/biocontainers/vsearch:2.30.6--h0bb26bb_0'
+    container "${params.container_registry}/biocontainers/vsearch:2.30.6--h0bb26bb_0"
     publishDir(path: { "${params.outdir}/${sample}/06_merged" }, mode: 'copy')
 
     input:

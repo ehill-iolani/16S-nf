@@ -1,6 +1,6 @@
 process MAKEBLASTDB {
     label 'process_low'
-    container 'quay.io/biocontainers/blast:2.15.0--pl5321h6f7f691_1'
+    container "${params.container_registry}/biocontainers/blast:2.15.0--pl5321h6f7f691_1"
     publishDir "${params.outdir}/blastdb", mode: 'copy'
 
     input:

@@ -1,6 +1,6 @@
 process BUILD_REPORT {
     label 'process_low'
-    container 'quay.io/biocontainers/pandas:2.2.1'
+    container "${params.container_registry}/biocontainers/pandas:2.2.1"
     publishDir "${params.outdir}/final_report", mode: 'copy'
 
     input:

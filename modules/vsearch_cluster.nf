@@ -1,7 +1,7 @@
 process VSEARCH_CLUSTER {
     tag "$sample"
     label 'process_medium'
-    container 'quay.io/biocontainers/vsearch:2.30.6--h0bb26bb_0'
+    container "${params.container_registry}/biocontainers/vsearch:2.30.6--h0bb26bb_0"
     publishDir(path: { "${params.outdir}/${sample}/03_clusters" }, mode: 'copy')
 
     input:

@@ -1,7 +1,7 @@
 process CUTADAPT {
     tag "$sample"
     label 'process_low'
-    container 'quay.io/biocontainers/cutadapt:4.9--py310h1fe012e_3'
+    container "${params.container_registry}/biocontainers/cutadapt:4.9--py310h1fe012e_3"
     publishDir(path: { "${params.outdir}/${sample}/02_trimmed" }, mode: 'copy')
 
     input:

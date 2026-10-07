@@ -198,6 +198,25 @@
         }
       }
     },
+    "container_images": {
+      "title": "Container images",
+      "type": "object",
+      "description": "Where each tool's container image is pulled from.",
+      "properties": {
+        "container_registry": {
+          "type": "string",
+          "default": "quay.io",
+          "description": "Registry for the biocontainers images (blast, chopper, cutadapt, minimap2, pandas, racon, spoa, vsearch).",
+          "help_text": "The google_batch profile points this at the project's own Artifact Registry mirror (see scripts/mirror_images.sh) so Batch VMs don't pull from quay.io; pass --container_registry quay.io to pull from upstream instead. The mirror keeps each image's upstream path, so only the host changes."
+        },
+        "dockerhub_registry": {
+          "type": "string",
+          "default": "docker.io",
+          "description": "Registry for the Docker Hub images (medaka, and ubuntu for the reference downloads and on Batch).",
+          "help_text": "Same idea as container_registry, for images that come from Docker Hub."
+        }
+      }
+    },
     "generic_options": {
       "title": "Generic options",
       "type": "object",
@@ -228,6 +247,7 @@
     { "$ref": "#/$defs/consensus_polishing" },
     { "$ref": "#/$defs/taxonomy_assignment" },
     { "$ref": "#/$defs/beta_diversity" },
+    { "$ref": "#/$defs/container_images" },
     { "$ref": "#/$defs/generic_options" }
   ]
 }

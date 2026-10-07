@@ -1,7 +1,7 @@
 process SPOA_CONSENSUS {
     tag "${sample}:${cluster_id}"
     label 'process_low'
-    container 'quay.io/biocontainers/spoa:4.1.4--h077b44d_3'
+    container "${params.container_registry}/biocontainers/spoa:4.1.4--h077b44d_3"
     publishDir(path: { "${params.outdir}/${sample}/04_draft/${cluster_id}" }, mode: 'copy')
 
     input:
