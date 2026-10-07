@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft-07/schema",
   "$id": "https://raw.githubusercontent.com/ehill-iolani/16S-nf/main/nextflow_schema.json",
   "title": "16S-nf pipeline parameters",
-  "description": "ONT 16S rRNA amplicon microbial community classification: quality-aware clustering (isONclust) + spoa/racon/medaka consensus + reference/BLAST taxonomy assignment, plus Bray-Curtis/PCoA beta diversity.",
+  "description": "ONT 16S rRNA amplicon microbial community classification: vsearch identity clustering + spoa/racon/medaka consensus + reference/BLAST taxonomy assignment, plus Bray-Curtis/PCoA beta diversity.",
   "type": "object",
   "$defs": {
     "input_output_options": {
@@ -113,21 +113,30 @@
     "clustering": {
       "title": "Clustering",
       "type": "object",
-      "description": "isONclust de novo clustering.",
+      "description": "vsearch de novo identity clustering, plus a second vsearch pass that merges near-identical cluster consensus sequences.",
       "properties": {
         "cluster_id": {
           "type": "number",
           "default": 0.86,
           "minimum": 0,
           "maximum": 1,
-          "description": "isONclust similarity threshold.",
-          "help_text": "Tune per amplicon/primer set -- too loose merges distinct organisms into one cluster, too strict splits one organism's reads (or its multiple rRNA operon copies) into several clusters."
+          "description": "vsearch identity threshold (fraction identity to the cluster centroid).",
+          "help_text": "Tune per amplicon/primer set and basecaller accuracy -- too loose merges distinct organisms into one cluster, too strict splits one organism's reads (or its multiple rRNA operon copies) into several small clusters that fall under min_cluster and are dropped."
         },
         "min_cluster": {
           "type": "integer",
-          "default": 20,
+          "default": 5,
           "minimum": 1,
-          "description": "Minimum reads in a cluster required to attempt consensus."
+          "description": "Minimum reads in a read-level cluster required to attempt consensus.",
+          "help_text": "A compute and consensus-quality floor, not a statement about which taxa are real: a consensus from only a few reads is barely better than one read, and every surviving cluster costs several downstream tasks. Keep it low so fragments of one organism can still be merged (merge_id); judge how well-supported a taxon is with min_abundance / min_rel_abundance instead."
+        },
+        "merge_id": {
+          "type": "number",
+          "default": 0.97,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Identity at which per-cluster consensus sequences are merged (second vsearch pass); 0 skips the merge.",
+          "help_text": "The read-level pass must run loose enough for raw ONT error, which can split one organism into several clusters. Consensus sequences are far more accurate, so near-identical ones are folded back together here, keeping the largest cluster's consensus and summing the read counts. Set lower to merge more aggressively, higher (or 0) to keep close species/variants apart. Multi-copy rRNA operons within one genome can differ slightly, so re-tune for your amplicon region."
         }
       }
     },
@@ -147,7 +156,7 @@
     "taxonomy_assignment": {
       "title": "Taxonomy assignment",
       "type": "object",
-      "description": "BLAST-based taxonomy assignment and confidence flagging.",
+      "description": "BLAST-based taxonomy assignment, confidence and abundance flagging.",
       "properties": {
         "min_pident": {
           "type": "number",
@@ -156,6 +165,21 @@
           "maximum": 100,
           "description": "BLAST %identity threshold for a confident call.",
           "help_text": "Hits below this identity are flagged low_identity rather than dropped, and routed to consensus_by_confidence/low_confidence/ instead of confident/. Clusters with no BLAST hit at all are flagged no_hit. Also determines which clusters count as an identified taxon for the rarefaction curve and PCoA (flagged clusters are excluded from both)."
+        },
+        "min_abundance": {
+          "type": "integer",
+          "default": 20,
+          "minimum": 0,
+          "description": "Merged clusters with fewer reads than this get low_abundance = true.",
+          "help_text": "Applied to the merged cluster_size (reads from every cluster folded into it by merge_id). Flag-only: the cluster is still BLASTed and reported, with low_abundance = true in its own column of the abundance table (flag_reason is unaffected). Does not affect the consensus_by_confidence folders. 0 disables."
+        },
+        "min_rel_abundance": {
+          "type": "number",
+          "default": 0,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Merged clusters holding a smaller fraction of their sample's clustered reads than this get low_abundance = true.",
+          "help_text": "The depth-independent counterpart of min_abundance: 0.001 marks anything under 0.1% of the sample's clustered reads, however many reads the barcode has. A cluster is marked if it fails either cutoff. 0 disables."
         }
       }
     },

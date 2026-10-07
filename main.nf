@@ -2,7 +2,7 @@
 /*
  * 16S-nf: ONT 16S rRNA amplicon classification for microbial community
  * profiling. Same clustering + consensus + BLAST-taxonomy architecture as
- * edna-ont-nf (isONclust + spoa/racon/medaka + BLAST), loosely following
+ * edna-ont-nf (vsearch + spoa/racon/medaka + BLAST), loosely following
  * wf-metagenomics' stages (ingest -> filter -> classify -> abundance +
  * diversity report) but classifying via alignment against a targeted
  * reference (wf-metagenomics' "minimap2 mode", here via BLAST) rather than
@@ -56,10 +56,13 @@ def helpMessage() {
       --fwd_primer / --rev_primer   primer sequences for cutadapt trimming (e.g. 27F/1492R for full-length 16S)
       --min_len / --max_len / --min_qual   chopper filtering thresholds (defaults tuned for full-length ~1.5kb 16S)
       --enable_read_stats   read length/Q-score summary before vs. after filtering (default ${params.enable_read_stats})
-      --cluster_id   isONclust similarity threshold (default ${params.cluster_id})
-      --min_cluster  minimum reads to polish a cluster (default ${params.min_cluster})
+      --cluster_id   vsearch identity threshold for clustering (default ${params.cluster_id})
+      --min_cluster  minimum reads for a read-level cluster to get a consensus -- a compute/quality floor (default ${params.min_cluster})
+      --merge_id     identity at which per-cluster consensus sequences are merged, 0 to skip (default ${params.merge_id})
       --enable_medaka   use medaka-polished consensus instead of racon consensus (default ${params.enable_medaka})
       --min_pident   BLAST %identity below which a hit is low-confidence (default ${params.min_pident})
+      --min_abundance      merged clusters with fewer reads get low_abundance=true in the abundance table, not dropped (default ${params.min_abundance})
+      --min_rel_abundance  ...or with a smaller fraction of the sample's clustered reads, 0 = off (default ${params.min_rel_abundance})
       --metadata     CSV: sample,<metadata columns> -- joined onto the PCoA coordinates for coloring by group/site/etc.
     """.stripIndent()
 }

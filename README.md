@@ -1,7 +1,7 @@
 # 16S-nf
 
 A Nextflow (DSL2) pipeline for classifying Oxford Nanopore 16S rRNA amplicon
-data from microbial communities: quality-aware clustering (isONclust) +
+data from microbial communities: vsearch identity clustering +
 spoa/racon/medaka consensus + reference/BLAST taxonomy assignment, plus
 Bray-Curtis/PCoA beta diversity. Sibling pipeline to
 [edna-ont-nf](https://github.com/ehill-iolani/edna-ont-nf) -- same
@@ -96,10 +96,13 @@ nextflow run main.nf -entry MERGE_ONLY --input samplesheet.csv -profile docker
 | `--fwd_primer` / `--rev_primer` | `null` | Primer sequences for cutadapt trimming; trimming is skipped if unset |
 | `--min_len` / `--max_len` / `--min_qual` | `1200` / `1800` / `10` | chopper length/quality filtering thresholds -- sized for full-length 16S; narrow for a single V-region amplicon |
 | `--enable_read_stats` | `true` | Read length and Q-score summary before vs. after filtering (`final_report/read_qc_summary.html`, `read_stats.tsv`, `read_length_qscore_hist.tsv`); purely informational |
-| `--cluster_id` | `0.86` | isONclust similarity threshold -- tune per amplicon/primer set |
-| `--min_cluster` | `20` | Minimum reads in a cluster to attempt consensus |
+| `--cluster_id` | `0.86` | vsearch identity threshold for read clustering -- tune per amplicon/primer set |
+| `--min_cluster` | `5` | Minimum reads in a read-level cluster to attempt consensus -- a compute/quality floor, kept low so fragments can still be merged |
+| `--merge_id` | `0.97` | Identity at which per-cluster consensus sequences are merged (second vsearch pass, `MERGE_CONSENSUS`); `0` skips the merge |
 | `--enable_medaka` | `false` | Use medaka-polished consensus instead of the racon consensus downstream |
 | `--min_pident` | `90` | BLAST hits below this %identity are flagged `low_identity`, not dropped; also the cutoff for what counts as an identified taxon in the rarefaction curve and PCoA |
+| `--min_abundance` | `20` | Merged clusters with fewer reads than this get `low_abundance = true` in the abundance table, not dropped (`0` = off) |
+| `--min_rel_abundance` | `0` | Merged clusters holding a smaller fraction of their sample's clustered reads than this get `low_abundance = true`, e.g. `0.001` = under 0.1% (`0` = off) |
 | `--metadata` | `null` | Optional CSV (`sample,<columns>`) joined onto the PCoA output for coloring |
 
 All defaults live in `nextflow.config`, not `main.nf` (see the comments
@@ -119,17 +122,21 @@ flowchart TD
     MAKEBLASTDB --> blastdb[("BLAST db")]
 
     reads[/"--input samplesheet.csv"/] -->|"sample,fastq rows"| fastqs[/"fastq(.gz) files\n(per-sample, referenced by each row)"/]
-    fastqs --> MERGE_FASTQ --> CHOPPER --> CUTADAPT --> ISONCLUST
+    fastqs --> MERGE_FASTQ --> CHOPPER --> CUTADAPT --> VSEARCH_CLUSTER
     MERGE_FASTQ --> READ_STATS
     CHOPPER --> READ_STATS
     READ_STATS --> READ_STATS_REPORT
-    ISONCLUST -->|"per cluster"| SPOA_CONSENSUS --> MINIMAP2_ALIGN --> RACON
+    VSEARCH_CLUSTER -->|"per cluster"| SPOA_CONSENSUS --> MINIMAP2_ALIGN --> RACON
 
     RACON --> medaka_check{"--enable_medaka?"}
     medaka_check -->|"false (default)"| consensus["consensus fasta"]
     medaka_check -->|"true"| MEDAKA --> consensus
 
-    consensus --> BLAST_TAX
+    consensus --> merge_check{"--merge_id > 0?"}
+    merge_check -->|"yes (default 0.97)"| MERGE_CONSENSUS --> merged["merged consensus fasta"]
+    merge_check -->|"0"| merged
+
+    merged --> BLAST_TAX
     blastdb --> BLAST_TAX
 
     BLAST_TAX --> BUILD_REPORT
@@ -150,10 +157,11 @@ flowchart TD
 3. `CHOPPER` -- length/quality filter
    - `READ_STATS` (side branch, `--enable_read_stats`, on by default) -- read length and mean Q-score before vs. after filtering
 4. `CUTADAPT` -- primer trimming (skipped if no primers supplied)
-5. `ISONCLUST` -- quality-aware de novo clustering
+5. `VSEARCH_CLUSTER` -- de novo identity clustering
 6. `SPOA_CONSENSUS` -- draft consensus per cluster
 7. `MINIMAP2_ALIGN` + `RACON` -- alignment-based polish
 8. `MEDAKA` -- ONT-specific polish, opt-in via `--enable_medaka`
+   - `MERGE_CONSENSUS` (`--merge_id`, default 0.97, `0` skips) -- second vsearch pass that folds near-identical cluster consensus sequences back together, summing their read counts
 9. `BLAST_TAX` -- taxonomy assignment against the run's BLAST db
 10. `BUILD_REPORT` -- per-run abundance table + QC summary html
 11. `PCOA` -- Bray-Curtis distance + classical PCoA across samples, optionally joined with `--metadata`
@@ -171,9 +179,10 @@ results/
     00_merged/                merged fastq
     01_filtered/               chopper output
     02_trimmed/                 cutadapt output
-    03_clusters/                isONclust clusters
+    03_clusters/                vsearch read clusters (+ clusters.uc)
     04_draft/{cluster_id}/      spoa draft consensus
     05_racon/{cluster_id}/      minimap2 alignment + racon consensus
+    06_merged/                  merged consensus fastas + merge_map.tsv (unless --merge_id 0)
     06_consensus/               medaka consensus (only if --enable_medaka)
     07_taxonomy/{cluster_id}/   BLAST hits per cluster
   blastdb/                     BLAST db built from --taxdb
@@ -182,8 +191,8 @@ results/
     low_confidence/            best BLAST hit < --min_pident
     no_hit/                    no BLAST hit at all
   final_report/
-    abundance_table.tsv        one row per cluster: sample, cluster_size, best hit, tied_taxa (species tied for the best bitscore, if more than one), flag_reason
-    run_qc_summary.html        cluster counts, per-sample flagged counts
+    abundance_table.tsv        one row per cluster: sample, cluster_size, best hit, tied_taxa (species tied for the best bitscore, if more than one), flag_reason, low_abundance
+    run_qc_summary.html        cluster counts, per-sample flagged and low_abundance counts
     read_qc_summary.html       read length / Q-score, before vs. after filtering (--enable_read_stats)
     read_stats.tsv             the same numbers per sample and stage
     read_length_qscore_hist.tsv  length and Q-score histograms behind the platform's Read QC charts
@@ -193,7 +202,7 @@ results/
 
 `abundance_table.tsv` is byte-for-byte the same schema edna-ont-nf produces
 (`seq_id, sample, cluster_size, subject_id, pident, length, evalue,
-bitscore, stitle, tied_taxa, flag_reason`) -- this is what lets the platform's existing
+bitscore, stitle, tied_taxa, flag_reason, low_abundance`) -- this is what lets the platform's existing
 abundance and rarefaction charts work against 16S-nf's output with no
 frontend changes. `pcoa_coordinates.tsv` is new to this pipeline (edna-ont-nf
 doesn't compute beta diversity).

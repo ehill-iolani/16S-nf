@@ -3,11 +3,12 @@ include { MERGE_FASTQ      } from '../modules/merge_fastq.nf'
 include { CHOPPER          } from '../modules/chopper.nf'
 include { READ_STATS; READ_STATS_REPORT } from '../modules/read_stats.nf'
 include { CUTADAPT         } from '../modules/cutadapt.nf'
-include { ISONCLUST        } from '../modules/isonclust.nf'
+include { VSEARCH_CLUSTER  } from '../modules/vsearch_cluster.nf'
 include { SPOA_CONSENSUS   } from '../modules/spoa_consensus.nf'
 include { MINIMAP2_ALIGN   } from '../modules/minimap2_align.nf'
 include { RACON            } from '../modules/racon.nf'
 include { MEDAKA           } from '../modules/medaka.nf'
+include { MERGE_CONSENSUS  } from '../modules/merge_consensus.nf'
 include { BLAST_TAX        } from '../modules/blast_tax.nf'
 include { SORT_CONSENSUS   } from '../modules/sort_consensus.nf'
 include { BUILD_REPORT     } from '../modules/report.nf'
@@ -46,13 +47,13 @@ workflow WF_16S {
     // 4. primer trimming (skipped internally if no primers supplied)
     CUTADAPT(CHOPPER.out.filtered)
 
-    // 5. quality-aware de novo clustering -- groups reads from the same
+    // 5. de novo identity clustering (vsearch) -- groups reads from the same
     // organism together before consensus, which is what makes BLAST
     // classification reliable against noisy raw ONT reads
-    ISONCLUST(CUTADAPT.out.trimmed)
+    VSEARCH_CLUSTER(CUTADAPT.out.trimmed)
 
-    // ISONCLUST emits one fastq per cluster per sample; flatten and tag
-    clusters_ch = ISONCLUST.out.clusters
+    // VSEARCH_CLUSTER emits one fastq per cluster per sample; flatten and tag
+    clusters_ch = VSEARCH_CLUSTER.out.clusters
         .flatMap { sample, cluster_fastqs ->
             def files = cluster_fastqs instanceof List ? cluster_fastqs : [cluster_fastqs]
             files.collect { fq -> tuple(sample, fq.baseName, fq) }
@@ -73,6 +74,21 @@ workflow WF_16S {
     } else {
         consensus_ch = RACON.out.polished
             .map { sample, cluster_id, racon_fasta, cluster_fastq -> tuple(sample, cluster_id, racon_fasta) }
+    }
+
+    // 8b. second vsearch pass: fold clusters whose consensus sequences are
+    // near-identical back together (one organism split across several read
+    // clusters by raw ONT error) -- skipped with --merge_id 0
+    if (params.merge_id) {
+        MERGE_CONSENSUS(consensus_ch.groupTuple())
+        // one fasta per merged group; cluster_id is the representative's
+        consensus_ch = MERGE_CONSENSUS.out.merged
+            .flatMap { sample, fastas ->
+                def files = fastas instanceof List ? fastas : [fastas]
+                files.collect { fa ->
+                    tuple(sample, fa.name.minus("${sample}.").minus('.merged.fasta'), fa)
+                }
+            }
     }
 
     // 9. taxonomy assignment against the freshly built BLAST db -- the
