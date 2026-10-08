@@ -9,6 +9,9 @@ filtering by pident/evalue, and a proper MultiQC-style layout once the
 sample sheet format and reference taxonomy fields are finalized.
 """
 import argparse
+import os
+import shutil
+
 import pandas as pd
 
 COLS = ["seq_id", "subject_id", "pident", "length", "evalue", "bitscore", "stitle"]
@@ -63,11 +66,28 @@ def load_consensus_meta(paths):
         seq_id = tokens[0]
         fields = dict(tok.split("=", 1) for tok in tokens[1:] if "=" in tok)
         rows.append({
+            "path": p,
             "seq_id": seq_id,
             "sample": fields.get("sample"),
             "cluster_size": int(fields["cluster_size"]) if "cluster_size" in fields else None,
         })
-    return pd.DataFrame(rows, columns=["seq_id", "sample", "cluster_size"])
+    return pd.DataFrame(rows, columns=["path", "seq_id", "sample", "cluster_size"])
+
+
+# flag_reason -> the consensus_by_confidence/ folder a cluster's fasta goes in
+CONFIDENCE_DIR = {"": "confident", "low_identity": "low_confidence", "no_hit": "no_hit"}
+
+
+def sort_consensus(best, out_dir):
+    """Copy every consensus fasta into out_dir/{confident,low_confidence,no_hit}/
+    as {sample}.{cluster_id}.consensus.fasta, by the same call the abundance
+    table makes (flag_reason), so the two can't disagree."""
+    for d in CONFIDENCE_DIR.values():
+        os.makedirs(os.path.join(out_dir, d), exist_ok=True)
+    for row in best.dropna(subset=["path", "sample"]).itertuples():
+        cluster_id = row.seq_id[len(row.sample) + 1:]  # seq_id is {sample}_{cluster_id}
+        dest = os.path.join(out_dir, CONFIDENCE_DIR[row.flag_reason], f"{row.sample}.{cluster_id}.consensus.fasta")
+        shutil.copyfile(row.path, dest)
 
 
 def main():
@@ -76,6 +96,7 @@ def main():
     ap.add_argument("--consensus", nargs="+", required=True)
     ap.add_argument("--out-table", required=True)
     ap.add_argument("--out-html", required=True)
+    ap.add_argument("--out-sorted", help="directory to gather consensus fastas into, by confidence")
     ap.add_argument("--min-pident", type=float, default=90,
                      help="hits below this identity are flagged low_identity, not dropped")
     ap.add_argument("--min-abundance", type=int, default=0,
@@ -92,11 +113,9 @@ def main():
     # Ties are common (several reference records with identical bitscores),
     # so the sort must be stable: BLAST lists a cluster's hits best-first, and
     # a stable sort keeps that order among tied bitscores, so the hit picked
-    # here is the first line of the cluster's hits file -- the same one
-    # SORT_CONSENSUS reads to choose the confidence folder. pandas' default
-    # sort is not stable and picked an arbitrary tied hit, which could disagree
-    # with SORT_CONSENSUS (a cluster flagged low_identity but filed under
-    # confident/) and gave clusters with identical hits different species.
+    # here is the first line of the cluster's hits file. pandas' default sort
+    # is not stable and picked an arbitrary tied hit, which gave clusters with
+    # identical hits different species.
     best = (
         hits_df.sort_values("bitscore", ascending=False, kind="stable")
         .groupby("seq_id", as_index=False)
@@ -127,6 +146,9 @@ def main():
         | (best["cluster_size"] / sample_total < args.min_rel_abundance)
     )
     best["low_abundance"] = is_low_abundance.map({True: "true", False: "false"})
+
+    if args.out_sorted:
+        sort_consensus(best, args.out_sorted)
 
     best = best[["seq_id", "sample", "cluster_size", "subject_id", "pident",
                  "length", "evalue", "bitscore", "stitle", "tied_taxa", "flag_reason", "low_abundance"]]

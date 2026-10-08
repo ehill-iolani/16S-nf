@@ -5,7 +5,7 @@ process MERGE_CONSENSUS {
     publishDir(path: { "${params.outdir}/${sample}/06_merged" }, mode: 'copy')
 
     input:
-    tuple val(sample), val(cluster_ids), path(consensus_fastas)
+    tuple val(sample), path(consensus_fastas)
 
     output:
     tuple val(sample), path("merged/*.merged.fasta"), emit: merged
@@ -22,7 +22,7 @@ process MERGE_CONSENSUS {
      *
      * Each group keeps its largest cluster's consensus as the representative
      * and sums the members' cluster_size into it, so downstream steps
-     * (BLAST_TAX / SORT_CONSENSUS / BUILD_REPORT) see one fasta per group,
+     * (BLAST_TAX / BUILD_REPORT) see one fasta per group,
      * stamped exactly like an unmerged consensus.
      */
     """

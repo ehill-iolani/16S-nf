@@ -15,7 +15,7 @@ process CHOPPER {
     set -o pipefail
 
     zcat -f ${fastq} \\
-      | chopper -q ${params.min_qual} -l ${params.min_len} --maxlength ${params.max_len} \\
+      | chopper -t ${task.cpus} -q ${params.min_qual} -l ${params.min_len} --maxlength ${params.max_len} \\
       | gzip > ${sample}.filtered.fastq.gz
     """
 }

@@ -19,7 +19,7 @@ process CUTADAPT {
         : ""
     """
     if [ -n "${primer_args}" ]; then
-        cutadapt ${primer_args} -o ${sample}.trimmed.fastq.gz ${fastq}
+        cutadapt -j ${task.cpus} ${primer_args} -o ${sample}.trimmed.fastq.gz ${fastq}
     else
         cp ${fastq} ${sample}.trimmed.fastq.gz
     fi
