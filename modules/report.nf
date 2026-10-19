@@ -7,6 +7,7 @@ process BUILD_REPORT {
     input:
     path hit_files
     path consensus_files
+    path silva_taxmap   // SILVA's rank map, or the NO_TAXMAP placeholder
 
     output:
     path "abundance_table.tsv", emit: report
@@ -14,6 +15,8 @@ process BUILD_REPORT {
     path "consensus_by_confidence"
 
     script:
+    // detected by name, as PCOA does with NO_METADATA
+    def taxmap_arg = silva_taxmap.name != 'NO_TAXMAP' ? "--silva-taxmap ${silva_taxmap}" : ""
     """
     build_report.py \\
         --hits ${hit_files} \\
@@ -23,6 +26,7 @@ process BUILD_REPORT {
         --out-sorted consensus_by_confidence \\
         --min-pident ${params.min_pident} \\
         --min-abundance ${params.min_abundance} \\
-        --min-rel-abundance ${params.min_rel_abundance}
+        --min-rel-abundance ${params.min_rel_abundance} \\
+        ${taxmap_arg}
     """
 }

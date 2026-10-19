@@ -10,11 +10,71 @@ sample sheet format and reference taxonomy fields are finalized.
 """
 import argparse
 import os
+import re
 import shutil
 
 import pandas as pd
 
 COLS = ["seq_id", "subject_id", "pident", "length", "evalue", "bitscore", "stitle"]
+
+# SILVA's export puts a lineage where other references put a binomial: the
+# description BLAST reports for a SILVA hit is
+#   "Bacteria;Proteobacteria;Gammaproteobacteria;...;Pseudomonas;<organism>"
+# SILVA's curated taxonomy stops at genus -- the trailing organism name is just
+# whatever the source record said ("uncultured bacterium" for most of them) --
+# so a SILVA hit is called at genus level, and the lineage is written out as
+# rank columns named like edna-ont-nf's --taxdump ones, which the frontend
+# already rolls up by. SILVA's "domain" goes in NCBI's "superkingdom" column.
+LINEAGE_COLS = ["superkingdom", "phylum", "class", "order", "family", "genus"]
+SILVA_RANK_COL = {"domain": "superkingdom", "phylum": "phylum", "class": "class",
+                  "order": "order", "family": "family", "genus": "genus"}
+# Names SILVA uses for a rank it couldn't fill; treated as no name at all, so
+# one "uncultured" family doesn't lump unrelated clusters together.
+SILVA_PLACEHOLDER = re.compile(r"^(uncultured|incertae sedis|unknown\b)", re.I)
+
+
+def is_silva(stitle):
+    return isinstance(stitle, str) and ";" in stitle
+
+
+def load_silva_taxmap(path):
+    """SILVA's tax_slv_ssu file: "path;\\ttaxid\\trank\\t..." -> {path: rank}."""
+    taxmap = {}
+    with open(path) as fh:
+        for line in fh:
+            fields = line.rstrip("\n").split("\t")
+            if len(fields) >= 3:
+                taxmap[fields[0]] = fields[2]
+    return taxmap
+
+
+def silva_lineage(stitle, taxmap=None):
+    """{rank column: name} for a SILVA lineage description. Each level's rank
+    comes from SILVA's own rank map when there is one; without it (a
+    SILVA-format --taxdb from somewhere else), levels are taken in the usual
+    domain > phylum > ... > genus order, which is right for all but ~0.4% of
+    SILVA 138.1 records (the ones that skip a rank). Placeholders are left out."""
+    names = stitle.split(";")[:-1]  # the last field is the organism name
+    out = {}
+    for i, name in enumerate(names):
+        rank = taxmap.get(";".join(names[:i + 1]) + ";") if taxmap else None
+        col = SILVA_RANK_COL.get(rank) if rank else (LINEAGE_COLS[i] if i < len(LINEAGE_COLS) else None)
+        name = name.strip()
+        if col and name and not SILVA_PLACEHOLDER.match(name):
+            out[col] = name
+    return out
+
+
+def lineage_label(lineage):
+    """A SILVA hit's taxon label: "Genus sp.", or when the genus is unnamed, the
+    lowest named rank with that rank in brackets ("Anaerolineaceae (family)").
+    Mirrored by pcoa.py and the frontend's resultsFormat.js -- keep in sync."""
+    if lineage.get("genus"):
+        return f"{lineage['genus']} sp."
+    for col in reversed(LINEAGE_COLS[:-1]):
+        if lineage.get(col):
+            return f"{lineage[col]} ({'domain' if col == 'superkingdom' else col})"
+    return "Unclassified"
 
 
 def load_hits(paths):
@@ -29,14 +89,17 @@ def load_hits(paths):
     return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=COLS)
 
 
-def species_label(stitle):
+def species_label(stitle, taxmap=None):
     # same rule as the frontend's shortTaxonLabel: BLAST's stitle starts with
-    # the binomial, so the first two tokens name the species
+    # the binomial, so the first two tokens name the species -- except for a
+    # SILVA lineage, which is called at genus level (see lineage_label)
+    if is_silva(stitle):
+        return lineage_label(silva_lineage(stitle, taxmap))
     toks = stitle.split() if isinstance(stitle, str) else []
     return " ".join(toks[:2])
 
 
-def tied_species(hits_df):
+def tied_species(hits_df, taxmap=None):
     """seq_id -> "|"-joined distinct species among the hits tied for that
     cluster's best bitscore, or "" when the best hit is unambiguous.
 
@@ -48,7 +111,7 @@ def tied_species(hits_df):
     hits = hits_df[hits_df["subject_id"] != "NO_HIT"]
     for seq_id, grp in hits.groupby("seq_id", sort=False):
         top = grp[grp["bitscore"] == grp["bitscore"].max()]
-        names = list(dict.fromkeys(n for n in map(species_label, top["stitle"]) if n))
+        names = list(dict.fromkeys(n for n in (species_label(s, taxmap) for s in top["stitle"]) if n))
         out[seq_id] = "|".join(names) if len(names) > 1 else ""
     return out
 
@@ -104,8 +167,11 @@ def main():
     ap.add_argument("--min-rel-abundance", type=float, default=0,
                      help="merged clusters holding a smaller fraction of their sample's clustered reads "
                           "than this get low_abundance=true, not dropped")
+    ap.add_argument("--silva-taxmap",
+                     help="SILVA tax_slv_ssu file, to give each level of a SILVA lineage its true rank")
     args = ap.parse_args()
 
+    taxmap = load_silva_taxmap(args.silva_taxmap) if args.silva_taxmap else None
     hits_df = load_hits(args.hits)
     consensus_meta = load_consensus_meta(args.consensus)
 
@@ -122,7 +188,15 @@ def main():
         .first()
     )
     best = best.merge(consensus_meta, on="seq_id", how="left")
-    best["tied_taxa"] = best["seq_id"].map(tied_species(hits_df)).fillna("")
+    best["tied_taxa"] = best["seq_id"].map(tied_species(hits_df, taxmap)).fillna("")
+
+    # lineage columns only when the reference is SILVA-style, so a RefSeq or
+    # plain custom run's table keeps exactly its old columns
+    lineage_cols = LINEAGE_COLS if best["stitle"].map(is_silva).any() else []
+    if lineage_cols:
+        lineages = best["stitle"].map(lambda s: silva_lineage(s, taxmap) if is_silva(s) else {})
+        for col in lineage_cols:
+            best[col] = lineages.map(lambda lin: lin.get(col, ""))
 
     # clusters are flagged, not dropped, either for no BLAST hit at all or for
     # a best hit too divergent to call with confidence (pident < min-pident)
@@ -150,8 +224,10 @@ def main():
     if args.out_sorted:
         sort_consensus(best, args.out_sorted)
 
+    # lineage columns sit where edna-ont-nf puts its --taxdump ones
     best = best[["seq_id", "sample", "cluster_size", "subject_id", "pident",
-                 "length", "evalue", "bitscore", "stitle", "tied_taxa", "flag_reason", "low_abundance"]]
+                 "length", "evalue", "bitscore", "stitle", "tied_taxa"] + lineage_cols
+                + ["flag_reason", "low_abundance"]]
     best.to_csv(args.out_table, sep="\t", index=False)
 
     # "flagged" is the BLAST-confidence flag; low_abundance is counted

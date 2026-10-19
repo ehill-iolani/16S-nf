@@ -64,12 +64,15 @@ nextflow run main.nf \
 | `--tax_db_source` | Reference |
 |---|---|
 | `custom` (default) | Whatever FASTA `--taxdb` points to |
-| `silva138` | SILVA 138.1 SSURef, restricted to Bacteria/Archaea, converted from RNA to DNA |
+| `silva138` | SILVA 138.1 SSURef, restricted to Bacteria/Archaea, converted from RNA to DNA. Hits are called at genus level (see below) |
 | `refseq16s` | NCBI RefSeq targeted-loci 16S export (Bacteria + Archaea) |
 
 `silva138`/`refseq16s` need network access from wherever the pipeline runs,
 and cache the downloaded fasta under `--tax_db_cache` (default
-`assets/tax_db_cache/`) so it's fetched once and reused on later runs. When
+`assets/tax_db_cache/`) so it's fetched once and reused on later runs.
+`silva138` also fetches SILVA's taxonomy rank map (`silva_138_taxmap.txt`,
+alongside the fasta) to name each level of a hit's lineage. A cache from
+before that was fetched gets refreshed once. When
 `--tax_db_source` is anything other than `custom`, `--taxdb` is ignored (and
 not required).
 
@@ -205,6 +208,19 @@ bitscore, stitle, tied_taxa, flag_reason, low_abundance`) -- this is what lets t
 abundance and rarefaction charts work against 16S-nf's output with no
 frontend changes. `pcoa_coordinates.tsv` is new to this pipeline (edna-ont-nf
 doesn't compute beta diversity).
+
+**SILVA hits.** A SILVA hit's `stitle` is a lineage
+(`Bacteria;Proteobacteria;...;Pseudomonas;<organism>`), not a binomial, and
+SILVA's curated taxonomy stops at genus: the organism name is whatever the
+source record said, `uncultured bacterium` for most records. So when the
+reference is SILVA-style (any `stitle` containing `;`), the table gains
+`superkingdom, phylum, class, order, family, genus` columns between
+`tied_taxa` and `flag_reason`, where edna-ont-nf puts its `--taxdump`
+lineage. Each hit is labelled `Genus sp.`, or, when SILVA has no genus name
+for it, by its lowest named rank (`Anaerolineaceae (family)`). Placeholder
+names (`uncultured`, `Incertae Sedis`, `Unknown ...`) are left blank rather
+than treated as taxa. `tied_taxa` and the PCoA use the same labels, and so
+does the frontend.
 
 ## Repo structure
 

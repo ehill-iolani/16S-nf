@@ -1,0 +1,1 @@
+placeholder -- staged as BUILD_REPORT's SILVA rank map input when --tax_db_source isn't silva138; report.nf checks the staged filename to detect this case and skips --silva-taxmap

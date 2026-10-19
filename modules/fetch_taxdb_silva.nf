@@ -8,6 +8,11 @@ process FETCH_TAXDB_SILVA {
 
     output:
     path "silva_138_16s.fasta", emit: fasta
+    // SILVA's rank for every taxonomy path, which BUILD_REPORT needs to name
+    // each lineage level (the fasta's lineages skip ranks now and then). A
+    // cache holding only the fasta, from before this was an output, is
+    // re-fetched once, since storeDir only skips a task when all its outputs exist
+    path "silva_138_taxmap.txt", emit: taxmap
 
     script:
     // SILVA's SSURef export spans all three domains (small-subunit rRNA in
@@ -31,6 +36,16 @@ process FETCH_TAXDB_SILVA {
 
     if [ ! -s silva_138_16s.fasta ]; then
         echo "ERROR: filtered SILVA reference is empty -- check the Bacteria/Archaea filter against the current SILVA release's header format" >&2
+        exit 1
+    fi
+
+    curl -fsSL --retry 3 -o taxmap.txt.gz \\
+        "https://www.arb-silva.de/fileadmin/silva_databases/release_138_1/Exports/taxonomy/tax_slv_ssu_138.1.txt.gz"
+    gunzip -c taxmap.txt.gz > silva_138_taxmap.txt
+    rm -f taxmap.txt.gz
+
+    if [ ! -s silva_138_taxmap.txt ]; then
+        echo "ERROR: downloaded SILVA taxonomy rank map is empty" >&2
         exit 1
     fi
     """

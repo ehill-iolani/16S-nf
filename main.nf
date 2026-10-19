@@ -96,9 +96,13 @@ workflow {
 
     // --taxdb is only consulted for 'custom'; the two named sources fetch
     // (and cache under --tax_db_cache) their own reference fasta instead
+    // only SILVA has a rank map; the other sources pass a placeholder for the
+    // same fixed-arity reason as NO_METADATA below
+    taxmap_ch = Channel.fromPath("${projectDir}/assets/NO_TAXMAP")
     if (params.tax_db_source == 'silva138') {
         FETCH_TAXDB_SILVA()
         taxdb_fasta_ch = FETCH_TAXDB_SILVA.out.fasta
+        taxmap_ch = FETCH_TAXDB_SILVA.out.taxmap
     } else if (params.tax_db_source == 'refseq16s') {
         FETCH_TAXDB_REFSEQ()
         taxdb_fasta_ch = FETCH_TAXDB_REFSEQ.out.fasta
@@ -114,7 +118,7 @@ workflow {
         ? Channel.fromPath(params.metadata, checkIfExists: true)
         : Channel.fromPath("${projectDir}/assets/NO_METADATA")
 
-    WF_16S(samplesheetToChannel(params.input), taxdb_fasta_ch, metadata_ch)
+    WF_16S(samplesheetToChannel(params.input), taxdb_fasta_ch, taxmap_ch, metadata_ch)
 }
 
 // dev/debug entry point -- run a single step in isolation, e.g.:

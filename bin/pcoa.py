@@ -7,18 +7,62 @@ BUILD_REPORT already uses -- numpy comes along as pandas' own runtime
 dependency, so nothing new has to be verified to work on Batch.
 """
 import argparse
+import re
 import sys
 
 import numpy as np
 import pandas as pd
 
+# build_report.py's SILVA handling, mirrored: a SILVA hit's description is a
+# lineage ("Bacteria;...;Pseudomonas;<organism>"), called at genus level from
+# the lineage columns build_report.py writes for it.
+LINEAGE_COLS = ["superkingdom", "phylum", "class", "order", "family", "genus"]
+SILVA_PLACEHOLDER = re.compile(r"^(uncultured|incertae sedis|unknown\b)", re.I)
 
-def short_taxon_label(stitle, subject_id):
+
+def is_silva(stitle):
+    return isinstance(stitle, str) and ";" in stitle
+
+
+def silva_lineage(stitle):
+    """The lineage from the description alone, levels in the usual order --
+    only for a table without lineage columns (build_report.py always writes
+    them for a SILVA run, with SILVA's real ranks)."""
+    names = stitle.split(";")[:-1]
+    return {col: name.strip() for col, name in zip(LINEAGE_COLS, names)
+            if name.strip() and not SILVA_PLACEHOLDER.match(name.strip())}
+
+
+def lineage_label(lineage):
+    """Mirrors build_report.py's lineage_label -- keep in sync."""
+    if lineage.get("genus"):
+        return f"{lineage['genus']} sp."
+    for col in reversed(LINEAGE_COLS[:-1]):
+        if lineage.get(col):
+            return f"{lineage[col]} ({'domain' if col == 'superkingdom' else col})"
+    return "Unclassified"
+
+
+def genus_of(label):
+    """Mirrors abundance.js's genusOf: "Genus species" and "Genus sp." name
+    their genus (SILVA genera can be several words: "Candidatus Nitrosopumilus
+    sp."); a label resolved only above genus ("Anaerolineaceae (family)") has
+    none, so it stands for itself."""
+    if re.search(r" \([a-z]+\)$", label):
+        return label
+    if label.endswith(" sp."):
+        return label[:-len(" sp.")]
+    return label.split()[0]
+
+
+def short_taxon_label(stitle, subject_id, lineage=None):
     """Mirrors resultsFormat.js's shortTaxonLabel on the frontend -- both
     must agree on what counts as "one species" so a taxon in the abundance
     chart/rarefaction curve corresponds to the same grouping used here for
     beta diversity. Keep these two implementations in sync if either changes.
     """
+    if is_silva(stitle):
+        return lineage_label(lineage if lineage is not None else silva_lineage(stitle))
     words = str(stitle).split() if pd.notna(stitle) else []
     if len(words) >= 2:
         return f"{words[0]} {words[1]}"
@@ -35,9 +79,12 @@ def resolved_taxon(row):
     tied = row.get("tied_taxa")
     names = tied.split("|") if isinstance(tied, str) and tied else []
     if len(names) > 1:
-        genera = {name.split()[0] for name in names}
+        genera = {genus_of(name) for name in names}
         return f"{genera.pop()} sp." if len(genera) == 1 else None
-    return short_taxon_label(row.get("stitle"), row.get("subject_id"))
+    lineage = None
+    if "genus" in row.index:
+        lineage = {col: row[col] for col in LINEAGE_COLS if isinstance(row.get(col), str) and row[col]}
+    return short_taxon_label(row.get("stitle"), row.get("subject_id"), lineage)
 
 
 def bray_curtis(matrix):

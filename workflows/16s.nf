@@ -18,6 +18,7 @@ workflow WF_16S {
     take:
     reads_ch    // tuple(sample, fastq)
     ref_fasta   // path to 16S reference sequences fasta for BLAST taxonomy
+    taxmap      // SILVA's taxonomy rank map, or the NO_TAXMAP placeholder
     metadata    // path to a metadata CSV, or the NO_METADATA placeholder
 
     main:
@@ -102,7 +103,8 @@ workflow WF_16S {
         BLAST_TAX.out.hits.map { sample, hits -> hits }.collect(),
         consensus_ch
             .flatMap { sample, fastas -> [fastas].flatten() }
-            .collect()
+            .collect(),
+        taxmap
     )
 
     // 11. beta diversity -- Bray-Curtis + PCoA across samples from that same

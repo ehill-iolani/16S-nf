@@ -38,7 +38,7 @@
           "enum": ["custom", "silva138", "refseq16s"],
           "default": "custom",
           "description": "Reference database source: 'custom' (use --taxdb), 'silva138', or 'refseq16s'.",
-          "help_text": "'silva138' and 'refseq16s' auto-download and cache their reference fasta (under --tax_db_cache) instead of requiring --taxdb: 'silva138' is SILVA 138.1 SSURef restricted to Bacteria/Archaea with sequences converted from RNA to DNA; 'refseq16s' is NCBI's RefSeq targeted-loci 16S export (Bacteria+Archaea). Both need network access from wherever the pipeline runs. --taxdb is ignored unless this is 'custom'."
+          "help_text": "'silva138' and 'refseq16s' auto-download and cache their reference fasta (under --tax_db_cache) instead of requiring --taxdb: 'silva138' is SILVA 138.1 SSURef restricted to Bacteria/Archaea with sequences converted from RNA to DNA; 'refseq16s' is NCBI's RefSeq targeted-loci 16S export (Bacteria+Archaea). Both need network access from wherever the pipeline runs. --taxdb is ignored unless this is 'custom'. SILVA hits are called at genus level, since SILVA's curated taxonomy stops there, and their lineage is written to the abundance table as rank columns."
         },
         "taxdb": {
           "type": "string",
