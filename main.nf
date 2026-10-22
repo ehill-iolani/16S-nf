@@ -53,7 +53,8 @@ def helpMessage() {
       refseq16s   auto-download NCBI RefSeq 16S targeted loci, Bacteria+Archaea (cached under --tax_db_cache)
 
     Key optional:
-      --fwd_primer / --rev_primer   primer sequences for cutadapt trimming (e.g. 27F/1492R for full-length 16S)
+      --fwd_primer / --rev_primer   primer sequences (both 5'->3', as ordered) for cutadapt trimming, e.g. 27F/1492R;
+                                    reads in either orientation are trimmed, reads without both primers are dropped
       --min_len / --max_len / --min_qual   chopper filtering thresholds (defaults tuned for full-length ~1.5kb 16S)
       --enable_read_stats   read length/Q-score summary before vs. after filtering (default ${params.enable_read_stats})
       --cluster_id   vsearch identity threshold for clustering (default ${params.cluster_id})
@@ -89,9 +90,17 @@ workflow {
         exit 1
     }
 
-    if (params.help || !params.input || (params.tax_db_source == 'custom' && !params.taxdb)) {
+    if (params.help) {
         helpMessage()
         exit 0
+    }
+
+    // a missing input is a failed run, not a help request: exiting 0 here read
+    // as success to the platform, which then left the job 'running' for good
+    if (!params.input || (params.tax_db_source == 'custom' && !params.taxdb)) {
+        helpMessage()
+        log.error !params.input ? "--input is required" : "--taxdb is required with --tax_db_source custom"
+        exit 1
     }
 
     // --taxdb is only consulted for 'custom'; the two named sources fetch

@@ -96,7 +96,7 @@ nextflow run main.nf -entry MERGE_ONLY --input samplesheet.csv -profile docker
 | `--taxdb` | *(required if `--tax_db_source custom`)* | 16S reference sequences FASTA; a BLAST db is built from this each run |
 | `--tax_db_cache` | `assets/tax_db_cache` | Where auto-downloaded reference databases are cached between runs |
 | `--outdir` | `results` | Output directory |
-| `--fwd_primer` / `--rev_primer` | `null` | Primer sequences for cutadapt trimming; trimming is skipped if unset |
+| `--fwd_primer` / `--rev_primer` | `null` | Primer sequences (both 5'->3', as ordered) for cutadapt trimming; skipped if unset. Reads in either orientation are trimmed to what lies between the primers, and reads without both are dropped |
 | `--min_len` / `--max_len` / `--min_qual` | `1200` / `1800` / `10` | chopper length/quality filtering thresholds -- sized for full-length 16S; narrow for a single V-region amplicon |
 | `--enable_read_stats` | `true` | Read length and Q-score summary before vs. after filtering (`final_report/read_qc_summary.html`, `read_stats.tsv`, `read_length_qscore_hist.tsv`); purely informational |
 | `--cluster_id` | `0.86` | vsearch identity threshold for read clustering -- tune per amplicon/primer set |
@@ -159,7 +159,7 @@ flowchart TD
 2. `MERGE_FASTQ` -- merge multi-part fastq(.gz) files per sample
 3. `CHOPPER` -- length/quality filter
    - `READ_STATS` (side branch, `--enable_read_stats`, on by default) -- read length and mean Q-score before vs. after filtering
-4. `CUTADAPT` -- primer trimming (skipped if no primers supplied)
+4. `CUTADAPT` -- primer trimming (skipped if no primers supplied): one linked adapter with `--revcomp`, so reads from either strand are trimmed and come out forward-oriented
 5. `VSEARCH_CLUSTER` -- de novo identity clustering
 6. `SPOA_CONSENSUS` -- draft consensus per cluster (one task per sample, clusters in parallel across its cpus)
 7. `MINIMAP2_ALIGN` + `RACON` -- alignment-based polish
