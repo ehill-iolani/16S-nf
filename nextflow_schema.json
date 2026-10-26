@@ -165,6 +165,14 @@
       "type": "object",
       "description": "BLAST-based taxonomy assignment, confidence and abundance flagging.",
       "properties": {
+        "blast_chunk_size": {
+          "type": "integer",
+          "default": 300,
+          "minimum": 0,
+          "hidden": true,
+          "description": "Consensus sequences per BLAST task; 0 runs one task per sample.",
+          "help_text": "Each chunk is searched on its own machine, side by side, so a sample with thousands of clusters doesn't search them all one after another. Only changes how the work is spread out: the hits are the same."
+        },
         "min_pident": {
           "type": "number",
           "default": 90,

@@ -88,11 +88,21 @@ workflow WF_16S {
     // "alignment against a targeted reference" classification approach
     // (wf-metagenomics' minimap2 mode), run here via BLAST since the
     // consensus step above already collapsed each cluster to one polished
-    // sequence per organism. One blastn per sample over all its consensus
-    // sequences, so the db is staged once per sample rather than per cluster.
+    // sequence per organism. Each sample's consensus sequences (one per fasta)
+    // are split into chunks of --blast_chunk_size, one blastn task per chunk:
+    // at several seconds per query against SILVA, a soil sample's ~3k
+    // sequences took over 4 h as one task, and spread over VMs they run side
+    // by side. The hits are the same either way. A sample with fewer
+    // sequences than one chunk still gets a single task.
     // .first() turns the (single-emission) db channels into value channels so
-    // they're reused for every sample instead of being consumed after one
-    BLAST_TAX(consensus_ch, MAKEBLASTDB.out.db_files.first(), MAKEBLASTDB.out.db_name.first())
+    // they're reused for every chunk instead of being consumed after one
+    def chunk_size = params.blast_chunk_size as int
+    blast_in = consensus_ch.flatMap { sample, fastas ->
+        def files = [fastas].flatten()
+        def chunks = chunk_size > 0 ? files.collate(chunk_size) : [files]
+        chunks.withIndex().collect { chunk, i -> tuple(sample, String.format('%03d', i + 1), chunk) }
+    }
+    BLAST_TAX(blast_in, MAKEBLASTDB.out.db_files.first(), MAKEBLASTDB.out.db_name.first())
 
     // 10. per-run abundance table + QC report -- identical schema to
     // edna-ont-nf's, so the platform's existing abundance/rarefaction charts

@@ -1,25 +1,27 @@
 process BLAST_TAX {
-    tag "$sample"
+    tag "$sample $chunk"
     // process_medium, not process_low: blastn scales with threads, and a
     // several-thousand-query soil sample runs for hours -- the time limit is
     // only there to catch a hung task, since a timeout restarts from zero
     label 'process_medium'
     container "${params.container_registry}/biocontainers/blast:2.15.0--pl5321h6f7f691_1"
-    publishDir(path: { "${params.outdir}/${sample}/07_taxonomy" }, mode: 'copy')
 
     input:
-    tuple val(sample), path(consensus_fastas)
+    tuple val(sample), val(chunk), path(consensus_fastas)
     path db_files
     val db_name
 
     output:
-    tuple val(sample), path("${sample}.hits.tsv"), emit: hits
+    tuple val(sample), path("${sample}.chunk${chunk}.hits.tsv"), emit: hits
 
     script:
-    // one blastn over all of a sample's consensus sequences, not one task per
-    // cluster -- each task would otherwise stage the whole BLAST db (hundreds
-    // of MB for SILVA) just to search a single sequence. File is sample-
-    // prefixed since these get collected together in BUILD_REPORT.
+    // one blastn over a chunk of a sample's consensus sequences (the workflow
+    // splits them by --blast_chunk_size), not one task per cluster -- each
+    // task stages the whole BLAST db (hundreds of MB for SILVA), so a single
+    // sequence per task would spend far longer staging than searching. The
+    // file is sample- and chunk-prefixed since these all get collected
+    // together in BUILD_REPORT, which joins each sample's chunks back into
+    // one published <sample>.hits.tsv.
     //
     // `awk 1` rather than cat so a fasta missing its trailing newline can't
     // run its last line into the next file's header
@@ -50,6 +52,6 @@ process BLAST_TAX {
         }
     ' blast.tsv queries.fasta > no_hit.tsv
 
-    cat blast.tsv no_hit.tsv > ${sample}.hits.tsv
+    cat blast.tsv no_hit.tsv > ${sample}.chunk${chunk}.hits.tsv
     """
 }

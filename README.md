@@ -105,6 +105,7 @@ nextflow run main.nf -entry MERGE_ONLY --input samplesheet.csv -profile docker
 | `--merge_id` | `0.97` | Identity at which per-cluster consensus sequences are merged (second vsearch pass, `MERGE_CONSENSUS`); `0` skips the merge |
 | `--enable_medaka` | `false` | Use medaka-polished consensus instead of the racon consensus downstream |
 | `--container_registry` / `--dockerhub_registry` | `quay.io` / `docker.io` | Registries the tool images are pulled from. The `google_batch` profile points both at the project's Artifact Registry mirror (see [Container mirror](#container-mirror)); pass the defaults to pull from upstream |
+| `--blast_chunk_size` | `300` | Consensus sequences per `BLAST_TAX` task, so a sample with thousands of clusters is searched on several VMs side by side (`0` = one task per sample). The hits are the same either way |
 | `--min_pident` | `90` | BLAST hits below this %identity are flagged `low_identity`, not dropped; also the cutoff for what counts as an identified taxon in the rarefaction curve and PCoA |
 | `--min_abundance` | `20` | Merged clusters with fewer reads than this get `low_abundance = true` in the abundance table, not dropped (`0` = off) |
 | `--min_rel_abundance` | `0` | Merged clusters holding a smaller fraction of their sample's clustered reads than this get `low_abundance = true`, e.g. `0.001` = under 0.1% (`0` = off) |
@@ -166,7 +167,7 @@ flowchart TD
 7. `MINIMAP2_ALIGN` + `RACON` -- alignment-based polish
 8. `MEDAKA` -- ONT-specific polish, opt-in via `--enable_medaka`
    - `MERGE_CONSENSUS` (`--merge_id`, default 0.97, `0` skips) -- second vsearch pass that folds near-identical cluster consensus sequences back together, summing their read counts
-9. `BLAST_TAX` -- taxonomy assignment against the run's BLAST db (one blastn per sample)
+9. `BLAST_TAX` -- taxonomy assignment against the run's BLAST db (one blastn per chunk of `--blast_chunk_size` consensus sequences; `BUILD_REPORT` joins each sample's chunks back into `07_taxonomy/{sample}.hits.tsv`)
 10. `BUILD_REPORT` -- per-run abundance table + QC summary html, and every consensus fasta gathered by BLAST-hit confidence
 11. `PCOA` -- Bray-Curtis distance + classical PCoA across samples, optionally joined with `--metadata`
 

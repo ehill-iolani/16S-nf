@@ -62,6 +62,7 @@ def helpMessage() {
       --spoa_max_reads  reads per cluster used for the spoa draft, 0 = all; racon still polishes with every read (default ${params.spoa_max_reads})
       --merge_id     identity at which per-cluster consensus sequences are merged, 0 to skip (default ${params.merge_id})
       --enable_medaka   use medaka-polished consensus instead of racon consensus (default ${params.enable_medaka})
+      --blast_chunk_size  consensus sequences per BLAST task, 0 = one task per sample; same hits either way (default ${params.blast_chunk_size})
       --min_pident   BLAST %identity below which a hit is low-confidence (default ${params.min_pident})
       --min_abundance      merged clusters with fewer reads get low_abundance=true in the abundance table, not dropped (default ${params.min_abundance})
       --min_rel_abundance  ...or with a smaller fraction of the sample's clustered reads, 0 = off (default ${params.min_rel_abundance})
