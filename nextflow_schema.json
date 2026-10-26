@@ -145,6 +145,13 @@
       "type": "object",
       "description": "spoa/racon (and optionally medaka) consensus building.",
       "properties": {
+        "spoa_max_reads": {
+          "type": "integer",
+          "default": 500,
+          "minimum": 0,
+          "description": "Most reads per cluster used to build the spoa draft consensus; 0 uses all of them.",
+          "help_text": "spoa's run time grows much faster than the number of reads, so one very large cluster (100k+ reads) can take hours. The draft only needs a few hundred reads: racon then polishes it with every read in the cluster, and cluster_size still counts every read. Reads are taken evenly through the cluster. Raise it, or set 0, only to compare against an uncapped draft."
+        },
         "enable_medaka": {
           "type": "boolean",
           "default": false,

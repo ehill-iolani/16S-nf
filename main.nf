@@ -59,6 +59,7 @@ def helpMessage() {
       --enable_read_stats   read length/Q-score summary before vs. after filtering (default ${params.enable_read_stats})
       --cluster_id   vsearch identity threshold for clustering (default ${params.cluster_id})
       --min_cluster  minimum reads for a read-level cluster to get a consensus -- a compute/quality floor (default ${params.min_cluster})
+      --spoa_max_reads  reads per cluster used for the spoa draft, 0 = all; racon still polishes with every read (default ${params.spoa_max_reads})
       --merge_id     identity at which per-cluster consensus sequences are merged, 0 to skip (default ${params.merge_id})
       --enable_medaka   use medaka-polished consensus instead of racon consensus (default ${params.enable_medaka})
       --min_pident   BLAST %identity below which a hit is low-confidence (default ${params.min_pident})

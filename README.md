@@ -101,6 +101,7 @@ nextflow run main.nf -entry MERGE_ONLY --input samplesheet.csv -profile docker
 | `--enable_read_stats` | `true` | Read length and Q-score summary before vs. after filtering (`final_report/read_qc_summary.html`, `read_stats.tsv`, `read_length_qscore_hist.tsv`); purely informational |
 | `--cluster_id` | `0.86` | vsearch identity threshold for read clustering -- tune per amplicon/primer set |
 | `--min_cluster` | `5` | Minimum reads in a read-level cluster to attempt consensus -- a compute/quality floor, kept low so fragments can still be merged |
+| `--spoa_max_reads` | `500` | Most reads per cluster used for the spoa draft, taken evenly through the cluster (`0` = all). RACON still polishes with every read, and `cluster_size` counts every read |
 | `--merge_id` | `0.97` | Identity at which per-cluster consensus sequences are merged (second vsearch pass, `MERGE_CONSENSUS`); `0` skips the merge |
 | `--enable_medaka` | `false` | Use medaka-polished consensus instead of the racon consensus downstream |
 | `--container_registry` / `--dockerhub_registry` | `quay.io` / `docker.io` | Registries the tool images are pulled from. The `google_batch` profile points both at the project's Artifact Registry mirror (see [Container mirror](#container-mirror)); pass the defaults to pull from upstream |
@@ -161,7 +162,7 @@ flowchart TD
    - `READ_STATS` (side branch, `--enable_read_stats`, on by default) -- read length and mean Q-score before vs. after filtering
 4. `CUTADAPT` -- primer trimming (skipped if no primers supplied): one linked adapter with `--revcomp`, so reads from either strand are trimmed and come out forward-oriented
 5. `VSEARCH_CLUSTER` -- de novo identity clustering
-6. `SPOA_CONSENSUS` -- draft consensus per cluster (one task per sample, clusters in parallel across its cpus)
+6. `SPOA_CONSENSUS` -- draft consensus per cluster from at most `--spoa_max_reads` of its reads (one task per sample, clusters in parallel across its cpus)
 7. `MINIMAP2_ALIGN` + `RACON` -- alignment-based polish
 8. `MEDAKA` -- ONT-specific polish, opt-in via `--enable_medaka`
    - `MERGE_CONSENSUS` (`--merge_id`, default 0.97, `0` skips) -- second vsearch pass that folds near-identical cluster consensus sequences back together, summing their read counts

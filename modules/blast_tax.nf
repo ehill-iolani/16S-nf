@@ -1,6 +1,9 @@
 process BLAST_TAX {
     tag "$sample"
-    label 'process_low'
+    // process_medium, not process_low: blastn scales with threads, and a
+    // several-thousand-query soil sample runs for hours -- the time limit is
+    // only there to catch a hung task, since a timeout restarts from zero
+    label 'process_medium'
     container "${params.container_registry}/biocontainers/blast:2.15.0--pl5321h6f7f691_1"
     publishDir(path: { "${params.outdir}/${sample}/07_taxonomy" }, mode: 'copy')
 
