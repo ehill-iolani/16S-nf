@@ -31,9 +31,10 @@ process SPOA_CONSENSUS {
     . par_each.sh
 
     draft_one() {
+        local cid n_reads
         cid=\$(basename "\$1" .fastq)
-        n=\$(( \$(wc -l < "\$1") / 4 ))
-        awk -v n="\$n" -v cap=${params.spoa_max_reads} '
+        n_reads=\$(( \$(wc -l < "\$1") / 4 ))
+        awk -v n="\$n_reads" -v cap=${params.spoa_max_reads} '
             NR % 4 == 1 {
                 i = (NR - 1) / 4
                 keep = (cap <= 0 || n <= cap || int((i + 1) * cap / n) > int(i * cap / n))

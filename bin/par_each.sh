@@ -13,24 +13,29 @@
 # Call the function as a bare command: the shell ignores `set -e` inside a
 # function that is tested with `||`/`if`, so a failed step in it would be
 # silently skipped.
+#
+# The function runs inside this one's scope, so a plain assignment in it (say
+# `n=...`) overwrites a variable of the same name here. Declare the function's
+# own variables `local`; the _pe_ names below are a second guard. In 16S-nf
+# v0.3.4 a clobbered worker count left clusters drafted twice or not at all.
 par_each() {
-    local n=$1 fn=$2
+    local _pe_n=$1 _pe_fn=$2
     shift 2
-    local w pids=() rc=0
-    for ((w = 0; w < n; w++)); do
+    local _pe_w _pe_p _pe_pids=() _pe_rc=0
+    for ((_pe_w = 0; _pe_w < _pe_n; _pe_w++)); do
         (
-            i=0
-            for f in "$@"; do
-                if (( i % n == w )); then
-                    "$fn" "$f"
+            _pe_i=0
+            for _pe_f in "$@"; do
+                if (( _pe_i % _pe_n == _pe_w )); then
+                    "$_pe_fn" "$_pe_f"
                 fi
-                i=$((i + 1))
+                _pe_i=$((_pe_i + 1))
             done
         ) &
-        pids+=($!)
+        _pe_pids+=($!)
     done
-    for p in "${pids[@]}"; do
-        wait "$p" || rc=1
+    for _pe_p in "${_pe_pids[@]}"; do
+        wait "$_pe_p" || _pe_rc=1
     done
-    return $rc
+    return $_pe_rc
 }
