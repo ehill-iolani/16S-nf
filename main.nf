@@ -70,7 +70,21 @@ def helpMessage() {
     """.stripIndent()
 }
 
+// Two rows with the same sample name write the same output files, and
+// Nextflow only notices at the first step that gathers every sample (an
+// "input file name collision", about 20 min into a real run). Read the sheet
+// up front so the run fails before anything is submitted. Trimmed and
+// case-insensitive, like the platform's submit form.
+def checkUniqueSamples(path) {
+    def names = file(path, checkIfExists: true).splitCsv(header: true).collect { (it.sample ?: '').trim() }
+    def repeated = names.groupBy { it.toLowerCase() }.findAll { key, group -> key && group.size() > 1 }
+    if (repeated) {
+        error "Samplesheet: ${repeated.values()*.first().collect { "'${it}'" }.join(', ')} used by more than one row. Each sample's outputs are named after it, so every row needs its own sample name (list one sample's several files in a single row with a glob)"
+    }
+}
+
 def samplesheetToChannel(path) {
+    checkUniqueSamples(path)
     Channel
         .fromPath(path, checkIfExists: true)
         .splitCsv(header: true)

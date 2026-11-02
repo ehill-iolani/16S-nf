@@ -46,6 +46,8 @@ sample_b,data/barcode18/*.fastq.gz
 `fastq` may be a single file or a glob matching multiple part-files (they're
 merged per sample before filtering). Glob paths resolve relative to the
 launch directory, not the samplesheet's location.
+Each row needs its own `sample` name (compared ignoring case): two rows with
+the same name stop the run at launch.
 
 `silva_16s.fasta` is a plain FASTA of 16S reference sequences (e.g. exported
 from [SILVA](https://www.arb-silva.de/) or NCBI's 16S targeted-loci
