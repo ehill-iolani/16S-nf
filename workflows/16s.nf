@@ -52,6 +52,23 @@ workflow WF_16S {
     // classification reliable against noisy raw ONT reads
     VSEARCH_CLUSTER(CUTADAPT.out.trimmed)
 
+    // A sample with nothing to cluster (an empty blank, a failed barcode) is
+    // skipped there rather than failing the run: it emits no clusters, so it
+    // drops out of every step below, and BUILD_REPORT lists it in
+    // final_report/skipped_samples.tsv. Only a run where every sample came out
+    // empty stops here, since there is nothing left to report on.
+    VSEARCH_CLUSTER.out.skipped.subscribe { f ->
+        def (name, reads, largest, reason) = f.text.trim().split('\t')
+        log.warn(reason == 'no_reads'
+            ? "Sample ${name}: no reads left after primer trimming; skipped"
+            : "Sample ${name}: no cluster reached --min_cluster ${params.min_cluster} reads (${reads} reads, largest cluster ${largest}); skipped")
+    }
+    // (the isAborted check: a run that already failed elsewhere also ends
+    // with this channel empty, and shouldn't blame the samples for it)
+    clusters_ch = VSEARCH_CLUSTER.out.clusters.ifEmpty {
+        if (!workflow.session.isAborted()) error "No sample produced a cluster of at least --min_cluster ${params.min_cluster} reads, so there is nothing to identify. Each sample's 01_filtered and 02_trimmed folders show how many reads were left: check the primers, --min_len / --max_len and --cluster_id"
+    }
+
     // Everything from here to BLAST_TAX runs once per sample, not once per
     // cluster: VSEARCH_CLUSTER emits all of a sample's cluster fastqs as one
     // list, and each step below loops over them inside its task. A task per
@@ -59,19 +76,34 @@ workflow WF_16S {
     // each doing seconds of work. Channels are tuple(sample, [files]) throughout.
 
     // 6. draft consensus per cluster
-    SPOA_CONSENSUS(VSEARCH_CLUSTER.out.clusters)
+    SPOA_CONSENSUS(clusters_ch)
 
     // 7. alignment-based refinement
-    MINIMAP2_ALIGN(SPOA_CONSENSUS.out.draft.join(VSEARCH_CLUSTER.out.clusters))
+    MINIMAP2_ALIGN(SPOA_CONSENSUS.out.draft.join(clusters_ch))
     RACON(MINIMAP2_ALIGN.out.aligned)
+
+    // A cluster none of whose reads aligned to its draft is skipped there
+    // rather than failing the run (racon has nothing to polish with), and
+    // BUILD_REPORT lists it in final_report/skipped_clusters.tsv. A sample
+    // whose every cluster went that way drops out like an empty one; only a
+    // run with no polished cluster at all stops here.
+    RACON.out.skipped.subscribe { f ->
+        f.readLines().findAll { it.trim() }.each { line ->
+            def (name, cid, reads, draft_len, reason) = line.split('\t')
+            log.warn("Sample ${name}: cluster ${cid} (${reads} reads, ${draft_len} bp draft) skipped, none of its reads aligned to its draft")
+        }
+    }
+    polished_ch = RACON.out.polished.ifEmpty {
+        if (!workflow.session.isAborted()) error "No cluster in any sample could be polished: none of their reads aligned to their own draft consensus. Each sample's 02_trimmed and 04_draft folders show the read and draft lengths: check the primers and --min_len / --max_len"
+    }
 
     // 8. ONT-specific polish -- opt-in via --enable_medaka; off by default, in
     // which case the racon output above is used as the consensus directly
     if (params.enable_medaka) {
-        MEDAKA(RACON.out.polished)
+        MEDAKA(polished_ch)
         consensus_ch = MEDAKA.out.consensus
     } else {
-        consensus_ch = RACON.out.polished
+        consensus_ch = polished_ch
             .map { sample, racon_fastas, cluster_fastqs -> tuple(sample, racon_fastas) }
     }
 
@@ -114,7 +146,10 @@ workflow WF_16S {
         consensus_ch
             .flatMap { sample, fastas -> [fastas].flatten() }
             .collect(),
-        taxmap
+        taxmap,
+        // [] when nothing was skipped, so BUILD_REPORT still runs
+        VSEARCH_CLUSTER.out.skipped.collect().ifEmpty([]),
+        RACON.out.skipped.collect().ifEmpty([])
     )
 
     // 11. beta diversity -- Bray-Curtis + PCoA across samples from that same

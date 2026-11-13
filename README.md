@@ -102,7 +102,7 @@ nextflow run main.nf -entry MERGE_ONLY --input samplesheet.csv -profile docker
 | `--min_len` / `--max_len` / `--min_qual` | `1200` / `1800` / `10` | chopper length/quality filtering thresholds -- sized for full-length 16S; narrow for a single V-region amplicon |
 | `--enable_read_stats` | `true` | Read length and Q-score summary before vs. after filtering (`final_report/read_qc_summary.html`, `read_stats.tsv`, `read_length_qscore_hist.tsv`); purely informational |
 | `--cluster_id` | `0.86` | vsearch identity threshold for read clustering -- tune per amplicon/primer set |
-| `--min_cluster` | `5` | Minimum reads in a read-level cluster to attempt consensus -- a compute/quality floor, kept low so fragments can still be merged |
+| `--min_cluster` | `5` | Minimum reads in a read-level cluster to attempt consensus -- a compute/quality floor, kept low so fragments can still be merged. A sample with no cluster this big (or no reads after trimming) is skipped and listed in `skipped_samples.tsv`, not a failed run |
 | `--spoa_max_reads` | `500` | Most reads per cluster used for the spoa draft, taken evenly through the cluster (`0` = all). RACON still polishes with every read, and `cluster_size` counts every read |
 | `--merge_id` | `0.97` | Identity at which per-cluster consensus sequences are merged (second vsearch pass, `MERGE_CONSENSUS`); `0` skips the merge |
 | `--enable_medaka` | `false` | Use medaka-polished consensus instead of the racon consensus downstream |
@@ -164,9 +164,9 @@ flowchart TD
 3. `CHOPPER` -- length/quality filter
    - `READ_STATS` (side branch, `--enable_read_stats`, on by default) -- read length and mean Q-score before vs. after filtering
 4. `CUTADAPT` -- primer trimming (skipped if no primers supplied): one linked adapter with `--revcomp`, so reads from either strand are trimmed and come out forward-oriented
-5. `VSEARCH_CLUSTER` -- de novo identity clustering
+5. `VSEARCH_CLUSTER` -- de novo identity clustering. A sample with nothing to cluster (an empty blank) is skipped with a warning and listed in `final_report/skipped_samples.tsv`; the run only stops if every sample is empty
 6. `SPOA_CONSENSUS` -- draft consensus per cluster from at most `--spoa_max_reads` of its reads (one task per sample, clusters in parallel across its cpus)
-7. `MINIMAP2_ALIGN` + `RACON` -- alignment-based polish
+7. `MINIMAP2_ALIGN` + `RACON` -- alignment-based polish. A cluster none of whose reads aligned to its own draft (reads too short to place) is skipped with a warning and listed in `final_report/skipped_clusters.tsv`; the run only stops if no cluster in any sample could be polished
 8. `MEDAKA` -- ONT-specific polish, opt-in via `--enable_medaka`
    - `MERGE_CONSENSUS` (`--merge_id`, default 0.97, `0` skips) -- second vsearch pass that folds near-identical cluster consensus sequences back together, summing their read counts
 9. `BLAST_TAX` -- taxonomy assignment against the run's BLAST db (one blastn per chunk of `--blast_chunk_size` consensus sequences; `BUILD_REPORT` joins each sample's chunks back into `07_taxonomy/{sample}.hits.tsv`)
@@ -198,7 +198,9 @@ results/
     no_hit/                    no BLAST hit at all
   final_report/
     abundance_table.tsv        one row per cluster: sample, cluster_size, best hit, tied_taxa (species tied for the best bitscore, if more than one), flag_reason, low_abundance
-    run_qc_summary.html        cluster counts, per-sample flagged and low_abundance counts
+    run_qc_summary.html        cluster counts, per-sample flagged and low_abundance counts, skipped samples and clusters
+    skipped_samples.tsv        only if any: samples with nothing to cluster (sample, trimmed_reads, largest_cluster, reason `no_reads` / `no_cluster`)
+    skipped_clusters.tsv       only if any: clusters RACON could not polish (sample, cluster, reads, draft_length, reason `no_reads_aligned`); not in abundance_table.tsv
     read_qc_summary.html       read length / Q-score, before vs. after filtering (--enable_read_stats)
     read_stats.tsv             the same numbers per sample and stage
     read_length_qscore_hist.tsv  length and Q-score histograms behind the platform's Read QC charts

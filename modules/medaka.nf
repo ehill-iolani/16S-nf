@@ -20,9 +20,15 @@ process MEDAKA {
     //
     // sample-prefixed for the same reason as RACON's output -- cluster ids
     // repeat across samples and these get collected together in BUILD_REPORT
+    //
+    // loops over RACON's outputs, not the cluster fastqs: RACON skips a
+    // cluster whose reads didn't align to its draft, and that cluster's fastq
+    // still comes along here with no racon fasta to polish
     """
-    for fq in *.fastq; do
-        cid=\$(basename "\$fq" .fastq)
+    for draft in ${sample}.*.racon.fasta; do
+        cid=\${draft#${sample}.}
+        cid=\${cid%.racon.fasta}
+        fq="\$cid.fastq"
         medaka_consensus -i "\$fq" -d "${sample}.\$cid.racon.fasta" -o "medaka_\$cid" -t ${task.cpus}
 
         # stamp the sample/cluster-size header on, same as RACON -- medaka renames
