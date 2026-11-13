@@ -8,8 +8,12 @@ process VSEARCH_CLUSTER {
     tuple val(sample), path(fastq)
 
     output:
-    tuple val(sample), path("clusters/*.fastq"), emit: clusters
+    // clusters is optional: a sample with nothing to cluster (an empty blank,
+    // a failed barcode) emits no clusters and a one-line skipped.tsv instead,
+    // so it drops out of every step below without ending the whole run
+    tuple val(sample), path("clusters/*.fastq"), optional: true, emit: clusters
     tuple val(sample), path("clusters.uc"), emit: cluster_uc
+    path("${sample}.skipped.tsv"), optional: true, emit: skipped
 
     script:
     /*
@@ -34,9 +38,17 @@ process VSEARCH_CLUSTER {
     # (input is always gzip -- CUTADAPT emits .fastq.gz -- and this image's
     # busybox zcat has no -f plain-text passthrough)
     zcat ${fastq} | awk 'NR % 4 == 1 { sub(/[ \\t].*/, "", \$0) } { print }' > input.fastq
+
+    # Nothing to cluster is a result for this sample, not a pipeline failure:
+    # blanks and negative controls are meant to come out (nearly) empty, and
+    # one of them used to end a 17-sample run here. The sample is recorded in
+    # <sample>.skipped.tsv (sample, trimmed reads, largest cluster, reason),
+    # which BUILD_REPORT gathers into final_report/skipped_samples.tsv.
     if [ ! -s input.fastq ]; then
-        echo "VSEARCH_CLUSTER: no reads in ${fastq}" >&2
-        exit 1
+        echo "VSEARCH_CLUSTER: no reads in ${fastq} after primer trimming; skipping ${sample}" >&2
+        printf '%s\\t0\\t0\\tno_reads\\n' "${sample}" > ${sample}.skipped.tsv
+        touch clusters.uc
+        exit 0
     fi
 
     # fastq -> fasta for clustering (vsearch's fastq parser would also reject
@@ -91,8 +103,11 @@ process VSEARCH_CLUSTER {
     }'
 
     if ! ls clusters/*.fastq > /dev/null 2>&1; then
-        echo "VSEARCH_CLUSTER: no cluster reached --min_cluster ${params.min_cluster} reads at --cluster_id ${params.cluster_id}; see clusters.uc (lower either one?)" >&2
-        exit 1
+        n_reads=\$(( \$(wc -l < input.fastq) / 4 ))
+        largest=\$(awk -F'\\t' '\$1 == "C" && \$3 > m { m = \$3 } END { print m + 0 }' clusters.uc)
+        echo "VSEARCH_CLUSTER: no cluster in ${sample} reached --min_cluster ${params.min_cluster} reads at --cluster_id ${params.cluster_id} (\$n_reads reads, largest cluster \$largest); skipping it" >&2
+        printf '%s\\t%s\\t%s\\tno_cluster\\n' "${sample}" "\$n_reads" "\$largest" > ${sample}.skipped.tsv
+        exit 0
     fi
     echo "kept \$(ls clusters/*.fastq | wc -l) clusters (>= ${params.min_cluster} reads), \$(( \$(cat clusters/*.fastq | wc -l) / 4 )) of \$(( \$(wc -l < input.fastq) / 4 )) reads" >&2
     """

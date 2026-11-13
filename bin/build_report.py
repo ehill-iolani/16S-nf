@@ -16,6 +16,8 @@ import shutil
 import pandas as pd
 
 COLS = ["seq_id", "subject_id", "pident", "length", "evalue", "bitscore", "stitle"]
+SKIPPED_COLS = ["sample", "trimmed_reads", "largest_cluster", "reason"]
+SKIPPED_CLUSTER_COLS = ["sample", "cluster", "reads", "draft_length", "reason"]
 
 # SILVA's export puts a lineage where other references put a binomial: the
 # description BLAST reports for a SILVA hit is
@@ -116,6 +118,29 @@ def tied_species(hits_df, taxmap=None):
     return out
 
 
+def read_rows(paths):
+    rows = []
+    for p in paths or []:
+        with open(p) as fh:
+            rows += [line.rstrip("\n").split("\t") for line in fh if line.strip()]
+    return rows
+
+
+def load_skipped(paths):
+    """VSEARCH_CLUSTER's one-line <sample>.skipped.tsv files (a sample with no
+    reads after trimming, or no cluster of --min_cluster reads)."""
+    return pd.DataFrame(read_rows(paths), columns=SKIPPED_COLS).sort_values("sample", kind="stable")
+
+
+def load_skipped_clusters(paths):
+    """RACON's <sample>.racon_skipped.tsv files, one row per cluster none of
+    whose reads aligned to its own draft (so nothing to polish it with)."""
+    df = pd.DataFrame(read_rows(paths), columns=SKIPPED_CLUSTER_COLS)
+    # cluster ids are vsearch's cluster numbers: sort them as numbers
+    order = pd.to_numeric(df["cluster"], errors="coerce")
+    return df.assign(_o=order).sort_values(["sample", "_o"], kind="stable").drop(columns="_o")
+
+
 def load_consensus_meta(paths):
     # consensus fasta headers are stamped by RACON/MEDAKA as:
     #   >{sample}_{cluster_id} sample={sample} cluster_size={n_reads}
@@ -169,6 +194,14 @@ def main():
                           "than this get low_abundance=true, not dropped")
     ap.add_argument("--silva-taxmap",
                      help="SILVA tax_slv_ssu file, to give each level of a SILVA lineage its true rank")
+    ap.add_argument("--skipped", nargs="*", default=[],
+                     help="VSEARCH_CLUSTER's <sample>.skipped.tsv files; listed in skipped_samples.tsv")
+    ap.add_argument("--out-skipped", default="skipped_samples.tsv",
+                     help="written only when --skipped names at least one sample")
+    ap.add_argument("--skipped-clusters", nargs="*", default=[],
+                     help="RACON's <sample>.racon_skipped.tsv files; listed in skipped_clusters.tsv")
+    ap.add_argument("--out-skipped-clusters", default="skipped_clusters.tsv",
+                     help="written only when --skipped-clusters names at least one cluster")
     args = ap.parse_args()
 
     taxmap = load_silva_taxmap(args.silva_taxmap) if args.silva_taxmap else None
@@ -244,6 +277,17 @@ def main():
         .reset_index()
     )
 
+    # samples VSEARCH_CLUSTER had nothing to cluster for, and clusters RACON
+    # had no aligned reads to polish with: in no table above, so listed on
+    # their own (a file only when there are any, so a run without them has
+    # exactly its old outputs)
+    skipped = load_skipped(args.skipped)
+    if not skipped.empty:
+        skipped.to_csv(args.out_skipped, sep="\t", index=False)
+    skipped_clusters = load_skipped_clusters(args.skipped_clusters)
+    if not skipped_clusters.empty:
+        skipped_clusters.to_csv(args.out_skipped_clusters, sep="\t", index=False)
+
     with open(args.out_html, "w") as fh:
         fh.write("<html><body><h2>Run summary</h2>")
         fh.write(f"<p>Clusters processed: {n_clusters}</p>")
@@ -257,6 +301,18 @@ def main():
             fh.write(f"<p>Clusters marked low_abundance ({' or '.join(cutoffs)}): {n_low_abundance}</p>")
         fh.write("<h3>Per-sample</h3>")
         fh.write(per_sample.to_html(index=False))
+        if not skipped.empty:
+            fh.write("<h3>Skipped samples</h3>")
+            fh.write("<p>Nothing to identify: no reads left after primer trimming (no_reads), or no "
+                     "cluster reached --min_cluster reads (no_cluster). Expected for blanks and "
+                     "negative controls.</p>")
+            fh.write(skipped.to_html(index=False))
+        if not skipped_clusters.empty:
+            fh.write("<h3>Skipped clusters</h3>")
+            fh.write("<p>Not polished or identified: none of the cluster's reads aligned to its own "
+                     "draft consensus (no_reads_aligned), usually because the reads are too short to "
+                     "place. They are not in abundance_table.tsv.</p>")
+            fh.write(skipped_clusters.to_html(index=False))
         fh.write("</body></html>")
 
 
